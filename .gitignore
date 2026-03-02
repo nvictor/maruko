@@ -1,0 +1,35 @@
+.DS_Store
+
+# Xcode
+#
+# Created by https://www.toptal.com/developers/gitignore/api/xcode
+# Edit at https://www.toptal.com/developers/gitignore?templates=xcode
+
+### Xcode ###
+# Xcode
+#
+# gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
+
+## User-specific files
+*.xcuserdatad
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+
+## Build generated
+build/
+DerivedData/
+
+## Various settings
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+## Other
+*.app
+*.app.dSYM.zip
+*.app.zip
+*.ipa
+*.ipa.dSYM.zip
+*.pkg
+
+# End of https://www.toptal.com/developers/gitignore/api/xcode

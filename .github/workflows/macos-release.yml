@@ -1,0 +1,88 @@
+name: macOS Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Import Developer ID Certificate
+        run: |
+          echo "${{ secrets.DEVELOPER_ID_P12 }}" | base64 --decode > build/DeveloperID.p12
+          security create-keychain -p "" build.keychain
+          security import build/DeveloperID.p12 -k build.keychain -P "${{ secrets.DEVELOPER_ID_P12_PASSWORD }}" -T /usr/bin/codesign
+          security list-keychains -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+
+      - name: Configure keychain for codesign
+        run: |
+          security set-key-partition-list -S apple-tool:,apple: -k "" build.keychain
+
+      - name: Install Provisioning Profile
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.MARUKO_PROVISIONING_PROFILE }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/Maruko.provisionprofile
+
+      - name: Build and Archive App
+        run: |
+          set -o pipefail
+          xcodebuild -project "Maruko/Maruko.xcodeproj" \
+            -scheme "Maruko" \
+            -configuration Release \
+            -archivePath "$PWD/build/Maruko.xcarchive" \
+            -destination "platform=macOS,arch=arm64" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            DEBUG_INFORMATION_FORMAT="dwarf" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_IDENTITY="Developer ID Application: Victor Noagbodji (2DZ6D8C78T)" \
+            archive
+
+      - name: Export App
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$PWD/build/Maruko.xcarchive" \
+            -exportOptionsPlist "$PWD/Maruko/Maruko/ExportOptions.plist" \
+            -exportPath "$PWD/build"
+
+      - name: Notarize app
+        run: |
+          ditto -c -k --keepParent "build/Maruko.app" "build/Maruko.zip"
+          xcrun notarytool submit "build/Maruko.zip" \
+            --apple-id "${{ secrets.APPLE_ID }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --password "${{ secrets.APP_SPECIFIC_PASSWORD }}" \
+            --wait
+          xcrun stapler staple "build/Maruko.app"
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "Maruko" \
+            -srcfolder "build/Maruko.app" \
+            -ov -format UDZO "build/Maruko.dmg"
+
+      - name: Upload DMG to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/Maruko.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
