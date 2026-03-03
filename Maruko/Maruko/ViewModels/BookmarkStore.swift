@@ -8,6 +8,7 @@ import Combine
 @MainActor
 final class BookmarkStore: ObservableObject {
     @Published private(set) var groups: [String] = []
+    @Published private(set) var groupCounts: [String: Int] = [:]
     @Published var selectedGroup: String?
     @Published var selectedBookmarkIDs: Set<PersistentIdentifier> = []
     @Published var isImporting = false
@@ -59,10 +60,10 @@ final class BookmarkStore: ObservableObject {
                 )
             )
 
-            var groupCounts: [String: Int] = [:]
+            var computedGroupCounts: [String: Int] = [:]
             for bookmark in allBookmarks {
                 let group = normalizedGroupName(bookmark.group)
-                groupCounts[group, default: 0] += 1
+                computedGroupCounts[group, default: 0] += 1
             }
 
             let existingStates = try context.fetch(FetchDescriptor<GroupState>())
@@ -71,7 +72,7 @@ final class BookmarkStore: ObservableObject {
             var didChangeState = false
             var autoUnhiddenGroups: [String] = []
 
-            for (group, count) in groupCounts {
+            for (group, count) in computedGroupCounts {
                 if let state = statesByName[group] {
                     if state.isHidden && count > state.hiddenBookmarkCount {
                         state.isHidden = false
@@ -99,7 +100,7 @@ final class BookmarkStore: ObservableObject {
                 }
             }
 
-            for state in existingStates where groupCounts[state.name] == nil {
+            for state in existingStates where computedGroupCounts[state.name] == nil {
                 context.delete(state)
                 statesByName.removeValue(forKey: state.name)
                 didChangeState = true
@@ -110,14 +111,15 @@ final class BookmarkStore: ObservableObject {
             }
 
             hiddenGroupNames = Set(statesByName.values.filter(\.isHidden).map(\.name))
-            groups = groupCounts.keys
+            groupCounts = computedGroupCounts
+            groups = computedGroupCounts.keys
                 .filter { showHiddenGroups || !hiddenGroupNames.contains($0) }
                 .sorted()
 
             selectedGroupIsHidden = selectedGroup.map { hiddenGroupNames.contains($0) } ?? false
 
             if let selectedGroup {
-                if groupCounts[selectedGroup] == nil || (!showHiddenGroups && hiddenGroupNames.contains(selectedGroup)) {
+                if computedGroupCounts[selectedGroup] == nil || (!showHiddenGroups && hiddenGroupNames.contains(selectedGroup)) {
                     self.selectedGroup = nil
                     selectedGroupIsHidden = false
                 }
@@ -262,6 +264,7 @@ final class BookmarkStore: ObservableObject {
             selectedGroup = nil
             selectedGroupIsHidden = false
             groups = []
+            groupCounts = [:]
             hiddenGroupNames = []
             importSummary = "Database cleared (\(bookmarks.count) bookmarks removed)."
             logger.info("Database cleared. Removed \(bookmarks.count) bookmarks.")
