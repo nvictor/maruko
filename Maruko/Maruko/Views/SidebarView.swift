@@ -21,5 +21,16 @@ struct SidebarView: View {
             }
         }
         .navigationTitle("Groups")
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Menu("Sort") {
+                    Picker("Group Sort", selection: $store.groupSort) {
+                        ForEach(BookmarkStore.GroupSort.allCases) { sort in
+                            Text(sort.title).tag(sort)
+                        }
+                    }
+                }
+            }
+        }
     }
 }

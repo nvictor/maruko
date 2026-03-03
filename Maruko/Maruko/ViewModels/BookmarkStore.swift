@@ -7,8 +7,37 @@ import Combine
 
 @MainActor
 final class BookmarkStore: ObservableObject {
+    enum GroupSort: String, CaseIterable, Identifiable {
+        case nameAscending
+        case nameDescending
+        case countDescending
+        case countAscending
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .nameAscending:
+                "Name (A-Z)"
+            case .nameDescending:
+                "Name (Z-A)"
+            case .countDescending:
+                "Count (High-Low)"
+            case .countAscending:
+                "Count (Low-High)"
+            }
+        }
+    }
+
     @Published private(set) var groups: [String] = []
     @Published private(set) var groupCounts: [String: Int] = [:]
+    @Published var groupSort: GroupSort = .nameAscending {
+        didSet {
+            if groupSort != oldValue {
+                refreshGroups()
+            }
+        }
+    }
     @Published var selectedGroup: String?
     @Published var selectedBookmarkIDs: Set<PersistentIdentifier> = []
     @Published var isImporting = false
@@ -112,9 +141,8 @@ final class BookmarkStore: ObservableObject {
 
             hiddenGroupNames = Set(statesByName.values.filter(\.isHidden).map(\.name))
             groupCounts = computedGroupCounts
-            groups = computedGroupCounts.keys
-                .filter { showHiddenGroups || !hiddenGroupNames.contains($0) }
-                .sorted()
+            let visibleGroups = computedGroupCounts.keys.filter { showHiddenGroups || !hiddenGroupNames.contains($0) }
+            groups = sortGroups(Array(visibleGroups), counts: computedGroupCounts)
 
             selectedGroupIsHidden = selectedGroup.map { hiddenGroupNames.contains($0) } ?? false
 
@@ -359,5 +387,26 @@ final class BookmarkStore: ObservableObject {
     private func normalizedGroupName(_ rawValue: String) -> String {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Ungrouped" : trimmed
+    }
+
+    private func sortGroups(_ groupNames: [String], counts: [String: Int]) -> [String] {
+        groupNames.sorted { lhs, rhs in
+            let lhsCount = counts[lhs, default: 0]
+            let rhsCount = counts[rhs, default: 0]
+            let nameComparison = lhs.localizedCaseInsensitiveCompare(rhs)
+
+            switch groupSort {
+            case .nameAscending:
+                return nameComparison == .orderedAscending
+            case .nameDescending:
+                return nameComparison == .orderedDescending
+            case .countDescending:
+                if lhsCount != rhsCount { return lhsCount > rhsCount }
+                return nameComparison == .orderedAscending
+            case .countAscending:
+                if lhsCount != rhsCount { return lhsCount < rhsCount }
+                return nameComparison == .orderedAscending
+            }
+        }
     }
 }
