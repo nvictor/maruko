@@ -18,26 +18,20 @@ final class BookmarkStore: ObservableObject {
         var title: String {
             switch self {
             case .nameAscending:
-                "Name (A-Z)"
+                "Name Ascending"
             case .nameDescending:
-                "Name (Z-A)"
+                "Name Descending"
             case .countDescending:
-                "Count (High-Low)"
+                "Count Highest First"
             case .countAscending:
-                "Count (Low-High)"
+                "Count Lowest First"
             }
         }
     }
 
     @Published private(set) var groups: [String] = []
     @Published private(set) var groupCounts: [String: Int] = [:]
-    @Published var groupSort: GroupSort = .nameAscending {
-        didSet {
-            if groupSort != oldValue {
-                refreshGroups()
-            }
-        }
-    }
+    @Published var groupSort: GroupSort = .nameAscending
     @Published var selectedGroup: String?
     @Published var selectedBookmarkIDs: Set<PersistentIdentifier> = []
     @Published var isImporting = false
@@ -77,6 +71,10 @@ final class BookmarkStore: ObservableObject {
     func setShowHiddenGroups(_ isEnabled: Bool) {
         showHiddenGroups = isEnabled
         refreshGroups()
+    }
+
+    func isGroupHidden(_ group: String) -> Bool {
+        hiddenGroupNames.contains(group)
     }
 
     func refreshGroups() {
@@ -142,14 +140,24 @@ final class BookmarkStore: ObservableObject {
             hiddenGroupNames = Set(statesByName.values.filter(\.isHidden).map(\.name))
             groupCounts = computedGroupCounts
             let visibleGroups = computedGroupCounts.keys.filter { showHiddenGroups || !hiddenGroupNames.contains($0) }
-            groups = sortGroups(Array(visibleGroups), counts: computedGroupCounts)
+            groups = visibleGroups.sorted()
 
-            selectedGroupIsHidden = selectedGroup.map { hiddenGroupNames.contains($0) } ?? false
+            let currentSelection = selectedGroup
+            selectedGroupIsHidden = currentSelection.map { hiddenGroupNames.contains($0) } ?? false
 
-            if let selectedGroup {
-                if computedGroupCounts[selectedGroup] == nil || (!showHiddenGroups && hiddenGroupNames.contains(selectedGroup)) {
-                    self.selectedGroup = nil
-                    selectedGroupIsHidden = false
+            if let currentSelection {
+                let shouldClearSelection =
+                    computedGroupCounts[currentSelection] == nil ||
+                    (!showHiddenGroups && hiddenGroupNames.contains(currentSelection))
+
+                if shouldClearSelection {
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if self.selectedGroup == currentSelection {
+                            self.selectedGroup = nil
+                            self.selectedGroupIsHidden = false
+                        }
+                    }
                 }
             }
 
@@ -202,14 +210,19 @@ final class BookmarkStore: ObservableObject {
     }
 
     func exportSelectedGroup() {
-        guard let context = modelContext, let selectedGroup else { return }
+        guard let selectedGroup else { return }
+        exportGroup(named: selectedGroup)
+    }
+
+    func exportGroup(named group: String) {
+        guard let context = modelContext else { return }
 
         isExporting = true
         errorMessage = nil
 
         do {
-            let html = try exporter.exportGroup(selectedGroup, context: context)
-            let suggestedName = selectedGroup.replacingOccurrences(of: " ", with: "-").lowercased() + ".html"
+            let html = try exporter.exportGroup(group, context: context)
+            let suggestedName = group.replacingOccurrences(of: " ", with: "-").lowercased() + ".html"
             try exporter.save(html: html, defaultName: suggestedName)
         } catch {
             errorMessage = error.localizedDescription
@@ -219,18 +232,28 @@ final class BookmarkStore: ObservableObject {
     }
 
     func hideSelectedGroup() {
-        guard let context = modelContext, let selectedGroup else { return }
+        guard let selectedGroup else { return }
+        hideGroup(named: selectedGroup)
+    }
+
+    func hideGroup(named group: String) {
+        guard let context = modelContext else { return }
 
         do {
-            let count = try bookmarkCount(for: selectedGroup, in: context)
-            let state = try fetchOrCreateGroupState(named: selectedGroup, in: context)
+            let count = try bookmarkCount(for: group, in: context)
+            let state = try fetchOrCreateGroupState(named: group, in: context)
             state.isHidden = true
             state.hiddenBookmarkCount = count
             state.lastSeenBookmarkCount = count
             state.updatedAt = Date()
             try context.save()
 
-            importSummary = "Group \(selectedGroup) hidden."
+            if selectedGroup == group && !showHiddenGroups {
+                selectedGroup = nil
+                selectedGroupIsHidden = false
+            }
+
+            importSummary = "Group \(group) hidden."
             refreshGroups()
         } catch {
             errorMessage = error.localizedDescription
@@ -238,16 +261,21 @@ final class BookmarkStore: ObservableObject {
     }
 
     func unhideSelectedGroup() {
-        guard let context = modelContext, let selectedGroup else { return }
+        guard let selectedGroup else { return }
+        unhideGroup(named: selectedGroup)
+    }
+
+    func unhideGroup(named group: String) {
+        guard let context = modelContext else { return }
 
         do {
-            let state = try fetchOrCreateGroupState(named: selectedGroup, in: context)
+            let state = try fetchOrCreateGroupState(named: group, in: context)
             state.isHidden = false
             state.hiddenBookmarkCount = 0
             state.updatedAt = Date()
             try context.save()
 
-            importSummary = "Group \(selectedGroup) unhidden."
+            importSummary = "Group \(group) unhidden."
             refreshGroups()
         } catch {
             errorMessage = error.localizedDescription
@@ -302,17 +330,17 @@ final class BookmarkStore: ObservableObject {
         }
     }
 
-    func reapplyGroupingRules() {
+    func applyGroupingRules() {
         guard let context = modelContext else { return }
 
         do {
             let changedCount = try applyGroupingPolicy(toAllBookmarksIn: context)
-            importSummary = "Re-applied grouping rules (\(changedCount) bookmarks updated)."
-            logger.info("Re-applied grouping rules. Updated \(changedCount) bookmarks.")
+            importSummary = "Applied grouping rules (\(changedCount) bookmarks updated)."
+            logger.info("Applied grouping rules. Updated \(changedCount) bookmarks.")
             refreshGroups()
         } catch {
             errorMessage = error.localizedDescription
-            logger.error("Re-applying grouping rules failed: \(error.localizedDescription, privacy: .public)")
+            logger.error("Applying grouping rules failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -387,6 +415,10 @@ final class BookmarkStore: ObservableObject {
     private func normalizedGroupName(_ rawValue: String) -> String {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? "Ungrouped" : trimmed
+    }
+
+    var displayedGroups: [String] {
+        sortGroups(groups, counts: groupCounts)
     }
 
     private func sortGroups(_ groupNames: [String], counts: [String: Int]) -> [String] {

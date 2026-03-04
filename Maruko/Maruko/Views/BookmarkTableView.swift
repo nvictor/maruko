@@ -3,9 +3,12 @@ import SwiftData
 
 struct BookmarkTableView: View {
     @Query private var bookmarks: [Bookmark]
+    let selectedGroup: String?
     @ObservedObject var store: BookmarkStore
+    @State private var tableSelection: Set<PersistentIdentifier> = []
 
     init(selectedGroup: String?, store: BookmarkStore) {
+        self.selectedGroup = selectedGroup
         self.store = store
 
         if let selectedGroup {
@@ -27,7 +30,7 @@ struct BookmarkTableView: View {
     }
 
     var body: some View {
-        Table(bookmarks, selection: $store.selectedBookmarkIDs) {
+        Table(bookmarks, selection: $tableSelection) {
             TableColumn("Title") { bookmark in
                 Text(bookmark.title)
                     .lineLimit(1)
@@ -49,6 +52,19 @@ struct BookmarkTableView: View {
                 .textFieldStyle(.plain)
             }
             .width(min: 160, ideal: 220)
+        }
+        .onAppear {
+            tableSelection = store.selectedBookmarkIDs
+        }
+        .onChange(of: tableSelection) { _, newValue in
+            if store.selectedBookmarkIDs != newValue {
+                store.selectedBookmarkIDs = newValue
+            }
+        }
+        .onChange(of: selectedGroup) { _, _ in
+            if !tableSelection.isEmpty {
+                tableSelection.removeAll()
+            }
         }
     }
 }
