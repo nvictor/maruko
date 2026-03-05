@@ -26,7 +26,7 @@ enum BookmarkImporterError: LocalizedError {
 }
 
 struct BookmarkImporter {
-    func `import`(from fileURL: URL, into context: ModelContext) async throws -> ImportResult {
+    func `import`(from fileURL: URL, into context: ModelContext, rules: [GroupingRule]) async throws -> ImportResult {
         let parsed = try await Task.detached(priority: .userInitiated) {
             let hasSecurityScope = fileURL.startAccessingSecurityScopedResource()
             defer {
@@ -42,10 +42,11 @@ struct BookmarkImporter {
         let unique = Deduplicator.uniqueCandidates(from: parsed, excluding: existing)
 
         for candidate in unique {
-            let classification = BookmarkGroupingPolicy.classify(
+            let classification = BookmarkRuleEngine.classify(
                 title: candidate.title,
                 url: candidate.url,
-                fallbackGroup: candidate.group
+                fallbackGroup: candidate.group,
+                rules: rules
             )
 
             context.insert(

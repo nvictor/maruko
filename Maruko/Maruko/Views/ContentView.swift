@@ -5,6 +5,9 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var store = BookmarkStore()
     @State private var showingClearConfirmation = false
+    @State private var showingRules = false
+    @State private var showingApplyPreview = false
+    @State private var applyPreview: RuleApplyPreview?
 
     var body: some View {
         NavigationSplitView {
@@ -32,7 +35,13 @@ struct ContentView: View {
                     .disabled(store.isImporting)
 
                     Button("Apply Grouping") {
-                        store.applyGroupingRules()
+                        applyPreview = store.previewGroupingImpact()
+                        showingApplyPreview = applyPreview != nil
+                    }
+                    .disabled(store.isImporting || store.isExporting)
+
+                    Button("Grouping Rules") {
+                        showingRules = true
                     }
                     .disabled(store.isImporting || store.isExporting)
 
@@ -67,6 +76,25 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This permanently deletes all bookmarks in Maruko.")
+        }
+        .confirmationDialog(
+            "Apply Grouping",
+            isPresented: $showingApplyPreview,
+            titleVisibility: .visible
+        ) {
+            Button("Apply Grouping") {
+                store.applyGroupingRules()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let applyPreview {
+                Text("This will update \(applyPreview.changedCount) bookmarks and leave \(applyPreview.unchangedCount) unchanged.")
+            } else {
+                Text("Preview unavailable.")
+            }
+        }
+        .sheet(isPresented: $showingRules) {
+            RulesListView(store: store)
         }
         .alert("Error", isPresented: Binding(
             get: { store.errorMessage != nil },

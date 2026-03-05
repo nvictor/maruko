@@ -2,7 +2,7 @@ import SwiftData
 
 enum AppModelContainer {
     static let shared: ModelContainer = {
-        let schema = Schema([Bookmark.self, GroupState.self])
+        let schema = Schema([Bookmark.self, GroupState.self, GroupingRule.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {

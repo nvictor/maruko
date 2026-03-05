@@ -36,6 +36,7 @@ final class BookmarkStore: ObservableObject {
     @Published var selectedBookmarkIDs: Set<PersistentIdentifier> = []
     @Published var isImporting = false
     @Published var isExporting = false
+    @Published private(set) var groupingRules: [GroupingRule] = []
     @Published var importSummary: String?
     @Published var errorMessage: String?
     @Published private(set) var selectedGroupIsHidden = false
@@ -61,6 +62,8 @@ final class BookmarkStore: ObservableObject {
 
         do {
             try normalizeStoredGroupsIfNeeded(in: context)
+            try seedDefaultRulesIfNeeded()
+            _ = try loadRules()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -196,8 +199,8 @@ final class BookmarkStore: ObservableObject {
 
         Task {
             do {
-                let result = try await importer.import(from: selectedURL, into: context)
-                _ = try applyGroupingPolicy(toAllBookmarksIn: context)
+                let rules = try loadRules()
+                let result = try await importer.import(from: selectedURL, into: context, rules: rules)
                 importSummary = "Imported \(result.importedCount) bookmarks, skipped \(result.skippedCount) duplicates."
                 logger.info("Import completed. Imported: \(result.importedCount), skipped: \(result.skippedCount)")
                 refreshGroups()
@@ -334,7 +337,9 @@ final class BookmarkStore: ObservableObject {
         guard let context = modelContext else { return }
 
         do {
-            let changedCount = try applyGroupingPolicy(toAllBookmarksIn: context)
+            let rules = try loadRules()
+            try validateRulesBeforeApply(rules)
+            let changedCount = try applyGroupingPolicy(toAllBookmarksIn: context, rules: rules)
             importSummary = "Applied grouping rules (\(changedCount) bookmarks updated)."
             logger.info("Applied grouping rules. Updated \(changedCount) bookmarks.")
             refreshGroups()
@@ -344,16 +349,171 @@ final class BookmarkStore: ObservableObject {
         }
     }
 
-    private func applyGroupingPolicy(toAllBookmarksIn context: ModelContext) throws -> Int {
+    func previewGroupingImpact() -> RuleApplyPreview? {
+        guard let context = modelContext else { return nil }
+
+        do {
+            let rules = try loadRules()
+            try validateRulesBeforeApply(rules)
+            let bookmarks = try context.fetch(FetchDescriptor<Bookmark>())
+            return BookmarkRuleEngine.previewImpact(bookmarks: bookmarks, rules: rules, fallbackEnabled: true)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func loadRules() throws -> [GroupingRule] {
+        guard let context = modelContext else { return [] }
+        let fetched = try context.fetch(FetchDescriptor<GroupingRule>())
+        let ordered = BookmarkRuleEngine.sortedRules(fetched)
+        groupingRules = ordered
+        return ordered
+    }
+
+    func seedDefaultRulesIfNeeded() throws {
+        guard let context = modelContext else { return }
+        let existing = try context.fetchCount(FetchDescriptor<GroupingRule>())
+        guard existing == 0 else { return }
+
+        for rule in BookmarkRuleEngine.makeDefaultRules() {
+            context.insert(rule)
+        }
+        try context.save()
+    }
+
+    func validateRulesBeforeApply(_ rules: [GroupingRule]) throws {
+        let issues = BookmarkRuleEngine.validate(rules: rules)
+        guard !issues.isEmpty else { return }
+
+        let details = issues
+            .map { "\($0.ruleName) [\($0.pattern)]: \($0.message)" }
+            .joined(separator: "\n")
+        throw NSError(
+            domain: "Maruko.GroupingRules",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Fix invalid enabled rules before applying:\n\(details)"]
+        )
+    }
+
+    func addRule(from draft: GroupingRuleDraft) throws {
+        guard let context = modelContext else { return }
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTargetGroup = draft.targetGroup.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedName.isEmpty {
+            throw NSError(domain: "Maruko.GroupingRules", code: 4, userInfo: [NSLocalizedDescriptionKey: "Rule name cannot be empty."])
+        }
+        if trimmedTargetGroup.isEmpty {
+            throw NSError(domain: "Maruko.GroupingRules", code: 5, userInfo: [NSLocalizedDescriptionKey: "Target group cannot be empty."])
+        }
+
+        let rule = GroupingRule(
+            name: trimmedName,
+            isEnabled: draft.isEnabled,
+            order: draft.order,
+            kind: draft.kind,
+            pattern: trimmedPattern,
+            targetGroup: normalizedGroupName(trimmedTargetGroup),
+            matchField: draft.matchField,
+            isCaseSensitive: draft.isCaseSensitive
+        )
+
+        switch BookmarkRuleEngine.validate(rule: rule) {
+        case .valid:
+            break
+        case .invalid(let message):
+            throw NSError(domain: "Maruko.GroupingRules", code: 2, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        context.insert(rule)
+        try context.save()
+        _ = try loadRules()
+    }
+
+    func updateRule(_ rule: GroupingRule, from draft: GroupingRuleDraft) throws {
+        guard let context = modelContext else { return }
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTargetGroup = draft.targetGroup.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedName.isEmpty {
+            throw NSError(domain: "Maruko.GroupingRules", code: 4, userInfo: [NSLocalizedDescriptionKey: "Rule name cannot be empty."])
+        }
+        if trimmedTargetGroup.isEmpty {
+            throw NSError(domain: "Maruko.GroupingRules", code: 5, userInfo: [NSLocalizedDescriptionKey: "Target group cannot be empty."])
+        }
+
+        rule.name = trimmedName
+        rule.isEnabled = draft.isEnabled
+        rule.order = draft.order
+        rule.kind = draft.kind
+        rule.pattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        rule.targetGroup = normalizedGroupName(trimmedTargetGroup)
+        rule.matchField = draft.matchField
+        rule.isCaseSensitive = draft.isCaseSensitive
+        rule.updatedAt = Date()
+
+        switch BookmarkRuleEngine.validate(rule: rule) {
+        case .valid:
+            break
+        case .invalid(let message):
+            throw NSError(domain: "Maruko.GroupingRules", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        try context.save()
+        _ = try loadRules()
+    }
+
+    func setRuleEnabled(_ rule: GroupingRule, isEnabled: Bool) {
+        guard let context = modelContext else { return }
+        rule.isEnabled = isEnabled
+        rule.updatedAt = Date()
+        do {
+            try context.save()
+            _ = try loadRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteRule(_ rule: GroupingRule) {
+        guard let context = modelContext else { return }
+        context.delete(rule)
+        do {
+            try context.save()
+            try normalizeRuleOrder()
+            _ = try loadRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func moveRule(_ rule: GroupingRule, direction: Int) {
+        do {
+            var ordered = try loadRules()
+            guard let index = ordered.firstIndex(where: { $0.id == rule.id }) else { return }
+            let target = index + direction
+            guard ordered.indices.contains(target) else { return }
+            ordered.swapAt(index, target)
+            try persistRuleOrder(ordered)
+            _ = try loadRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyGroupingPolicy(toAllBookmarksIn context: ModelContext, rules: [GroupingRule]) throws -> Int {
         let all = try context.fetch(FetchDescriptor<Bookmark>())
         var didChange = false
         var changedCount = 0
 
         for bookmark in all {
-            let classification = BookmarkGroupingPolicy.classify(
+            let classification = BookmarkRuleEngine.classify(
                 title: bookmark.title,
                 url: bookmark.url,
-                fallbackGroup: normalizedGroupName(bookmark.group)
+                fallbackGroup: normalizedGroupName(bookmark.group),
+                rules: rules
             )
 
             var changedThisBookmark = false
@@ -377,6 +537,22 @@ final class BookmarkStore: ObservableObject {
         }
 
         return changedCount
+    }
+
+    private func persistRuleOrder(_ ordered: [GroupingRule]) throws {
+        guard let context = modelContext else { return }
+        for (index, rule) in ordered.enumerated() {
+            if rule.order != index {
+                rule.order = index
+                rule.updatedAt = Date()
+            }
+        }
+        try context.save()
+    }
+
+    private func normalizeRuleOrder() throws {
+        let ordered = BookmarkRuleEngine.sortedRules(groupingRules)
+        try persistRuleOrder(ordered)
     }
 
     private func normalizeStoredGroupsIfNeeded(in context: ModelContext) throws {
