@@ -44,7 +44,6 @@ struct RuleEditorView: View {
 
                 TextField("Target Group", text: $draft.targetGroup)
                 Toggle("Enabled", isOn: $draft.isEnabled)
-                Stepper("Order: \(draft.order)", value: $draft.order, in: 0...1000)
             }
             .formStyle(.grouped)
 

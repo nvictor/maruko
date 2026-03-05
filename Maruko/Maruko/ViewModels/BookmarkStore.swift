@@ -7,6 +7,17 @@ import Combine
 
 @MainActor
 final class BookmarkStore: ObservableObject {
+    private enum Preferences {
+        static let groupSortKey = "maruko.groupSort"
+        static let showHiddenGroupsKey = "maruko.showHiddenGroups"
+    }
+
+    struct ApplyPreview {
+        let rewriteChangedCount: Int
+        let groupingChangedCount: Int
+        let unchangedCount: Int
+    }
+
     enum GroupSort: String, CaseIterable, Identifiable {
         case nameAscending
         case nameDescending
@@ -31,16 +42,25 @@ final class BookmarkStore: ObservableObject {
 
     @Published private(set) var groups: [String] = []
     @Published private(set) var groupCounts: [String: Int] = [:]
-    @Published var groupSort: GroupSort = .nameAscending
+    @Published var groupSort: GroupSort = .nameAscending {
+        didSet {
+            UserDefaults.standard.set(groupSort.rawValue, forKey: Preferences.groupSortKey)
+        }
+    }
     @Published var selectedGroup: String?
     @Published var selectedBookmarkIDs: Set<PersistentIdentifier> = []
     @Published var isImporting = false
     @Published var isExporting = false
     @Published private(set) var groupingRules: [GroupingRule] = []
+    @Published private(set) var rewriteRules: [RewriteRule] = []
     @Published var importSummary: String?
     @Published var errorMessage: String?
     @Published private(set) var selectedGroupIsHidden = false
-    @Published private(set) var showHiddenGroups = false
+    @Published private(set) var showHiddenGroups = false {
+        didSet {
+            UserDefaults.standard.set(showHiddenGroups, forKey: Preferences.showHiddenGroupsKey)
+        }
+    }
 
     private let logger = Logger(subsystem: "com.mellowfleet.Maruko", category: "Import")
     private let importer = BookmarkImporter()
@@ -49,7 +69,14 @@ final class BookmarkStore: ObservableObject {
     private(set) var modelContext: ModelContext?
     private var hiddenGroupNames: Set<String> = []
 
-    init() {}
+    init() {
+        let defaults = UserDefaults.standard
+        if let rawSort = defaults.string(forKey: Preferences.groupSortKey),
+           let sort = GroupSort(rawValue: rawSort) {
+            groupSort = sort
+        }
+        showHiddenGroups = defaults.bool(forKey: Preferences.showHiddenGroupsKey)
+    }
 
     convenience init(modelContext: ModelContext) {
         self.init()
@@ -63,7 +90,10 @@ final class BookmarkStore: ObservableObject {
         do {
             try normalizeStoredGroupsIfNeeded(in: context)
             try seedDefaultRulesIfNeeded()
+            try seedDefaultRewriteRulesIfNeeded()
+            try migrateLegacyRewriteRulesIfNeeded()
             _ = try loadRules()
+            _ = try loadRewriteRules()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -199,8 +229,14 @@ final class BookmarkStore: ObservableObject {
 
         Task {
             do {
-                let rules = try loadRules()
-                let result = try await importer.import(from: selectedURL, into: context, rules: rules)
+                let groupingRules = try loadRules()
+                let rewriteRules = try loadRewriteRules()
+                let result = try await importer.import(
+                    from: selectedURL,
+                    into: context,
+                    groupingRules: groupingRules,
+                    rewriteRules: rewriteRules
+                )
                 importSummary = "Imported \(result.importedCount) bookmarks, skipped \(result.skippedCount) duplicates."
                 logger.info("Import completed. Imported: \(result.importedCount), skipped: \(result.skippedCount)")
                 refreshGroups()
@@ -337,11 +373,13 @@ final class BookmarkStore: ObservableObject {
         guard let context = modelContext else { return }
 
         do {
-            let rules = try loadRules()
-            try validateRulesBeforeApply(rules)
-            let changedCount = try applyGroupingPolicy(toAllBookmarksIn: context, rules: rules)
-            importSummary = "Applied grouping rules (\(changedCount) bookmarks updated)."
-            logger.info("Applied grouping rules. Updated \(changedCount) bookmarks.")
+            let groupingRules = try loadRules()
+            let rewriteRules = try loadRewriteRules()
+            try validateRulesBeforeApply(groupingRules)
+            try validateRewriteRulesBeforeApply(rewriteRules)
+            let result = try applyRewriteAndGrouping(toAllBookmarksIn: context, groupingRules: groupingRules, rewriteRules: rewriteRules)
+            importSummary = "Applied rewrite/grouping rules (rewrites: \(result.rewriteChanged), groups: \(result.groupingChanged))."
+            logger.info("Applied rewrite/grouping rules. rewrites: \(result.rewriteChanged), groups: \(result.groupingChanged)")
             refreshGroups()
         } catch {
             errorMessage = error.localizedDescription
@@ -349,14 +387,41 @@ final class BookmarkStore: ObservableObject {
         }
     }
 
-    func previewGroupingImpact() -> RuleApplyPreview? {
+    func previewGroupingImpact() -> ApplyPreview? {
         guard let context = modelContext else { return nil }
 
         do {
-            let rules = try loadRules()
-            try validateRulesBeforeApply(rules)
+            let groupingRules = try loadRules()
+            let rewriteRules = try loadRewriteRules()
+            try validateRulesBeforeApply(groupingRules)
+            try validateRewriteRulesBeforeApply(rewriteRules)
             let bookmarks = try context.fetch(FetchDescriptor<Bookmark>())
-            return BookmarkRuleEngine.previewImpact(bookmarks: bookmarks, rules: rules, fallbackEnabled: true)
+            var rewriteChangedCount = 0
+            var groupingChangedCount = 0
+            var unchangedCount = 0
+
+            for bookmark in bookmarks {
+                let rewrittenTitle = BookmarkRewriteEngine.rewrite(title: bookmark.title, url: bookmark.url, rules: rewriteRules)
+                let rewrittenChanged = rewrittenTitle != bookmark.title
+
+                let classification = BookmarkRuleEngine.classify(
+                    title: rewrittenTitle,
+                    url: bookmark.url,
+                    fallbackGroup: normalizedGroupName(bookmark.group),
+                    rules: groupingRules
+                )
+                let groupingChanged = classification.group != bookmark.group
+
+                if rewrittenChanged { rewriteChangedCount += 1 }
+                if groupingChanged { groupingChangedCount += 1 }
+                if !rewrittenChanged && !groupingChanged { unchangedCount += 1 }
+            }
+
+            return ApplyPreview(
+                rewriteChangedCount: rewriteChangedCount,
+                groupingChangedCount: groupingChangedCount,
+                unchangedCount: unchangedCount
+            )
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -380,6 +445,88 @@ final class BookmarkStore: ObservableObject {
             context.insert(rule)
         }
         try context.save()
+    }
+
+    func loadRewriteRules() throws -> [RewriteRule] {
+        guard let context = modelContext else { return [] }
+        let fetched = try context.fetch(FetchDescriptor<RewriteRule>())
+        let ordered = BookmarkRewriteEngine.sortedRules(fetched)
+        rewriteRules = ordered
+        return ordered
+    }
+
+    func seedDefaultRewriteRulesIfNeeded() throws {
+        guard let context = modelContext else { return }
+        let existing = try context.fetchCount(FetchDescriptor<RewriteRule>())
+        guard existing == 0 else { return }
+
+        for rule in BookmarkRewriteEngine.makeDefaultRules() {
+            context.insert(rule)
+        }
+        try context.save()
+    }
+
+    func migrateLegacyRewriteRulesIfNeeded() throws {
+        guard let context = modelContext else { return }
+        let rules = try context.fetch(FetchDescriptor<RewriteRule>())
+        var changed = false
+
+        for rule in rules {
+            let legacyKind = rule.kindRaw
+
+            if legacyKind == "githubRepoPathToHierarchyTitle" {
+                rule.kindRaw = "regexMatchReplace"
+                rule.matchField = .url
+                rule.pattern = #"^https://github\.com/([^/]+)/([^/?#]+)$"#
+                rule.replacementTemplate = "github > $1 > $2"
+                rule.isCaseSensitive = false
+                rule.updatedAt = Date()
+                changed = true
+                continue
+            }
+
+            if legacyKind == "containsTextTitleCaseWithPrefix" {
+                rule.kindRaw = "regexMatchReplace"
+                rule.matchField = .title
+                rule.pattern = #"(?i)^article\s+(.+)$"#
+                rule.replacementTemplate = "Article ${titlecase:1}"
+                rule.isCaseSensitive = false
+                rule.updatedAt = Date()
+                changed = true
+                continue
+            }
+
+            if rule.name == "Article Title Prefix" && rule.replacementTemplate == "Article $1" {
+                rule.replacementTemplate = "Article ${titlecase:1}"
+                rule.updatedAt = Date()
+                changed = true
+            }
+
+            if rule.kindRaw.isEmpty {
+                rule.kindRaw = "regexMatchReplace"
+                rule.updatedAt = Date()
+                changed = true
+            }
+        }
+
+        if changed {
+            try context.save()
+        }
+    }
+
+    func validateRewriteRulesBeforeApply(_ rules: [RewriteRule]) throws {
+        let issues = BookmarkRewriteEngine.validate(rules: rules)
+        guard !issues.isEmpty else { return }
+
+        let details = issues
+            .map { "\($0.ruleName): \($0.message)" }
+            .joined(separator: "\n")
+
+        throw NSError(
+            domain: "Maruko.RewriteRules",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Fix invalid enabled rewrite rules before applying:\n\(details)"]
+        )
     }
 
     func validateRulesBeforeApply(_ rules: [GroupingRule]) throws {
@@ -503,32 +650,133 @@ final class BookmarkStore: ObservableObject {
         }
     }
 
-    private func applyGroupingPolicy(toAllBookmarksIn context: ModelContext, rules: [GroupingRule]) throws -> Int {
+    func addRewriteRule(from draft: RewriteRuleDraft) throws {
+        guard let context = modelContext else { return }
+
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let template = draft.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if name.isEmpty {
+            throw NSError(domain: "Maruko.RewriteRules", code: 4, userInfo: [NSLocalizedDescriptionKey: "Rule name cannot be empty."])
+        }
+
+        let rule = RewriteRule(
+            name: name,
+            isEnabled: draft.isEnabled,
+            order: draft.order,
+            matchField: draft.matchField,
+            pattern: pattern,
+            replacementTemplate: template,
+            isCaseSensitive: draft.isCaseSensitive
+        )
+
+        switch BookmarkRewriteEngine.validate(rule: rule) {
+        case .valid:
+            break
+        case .invalid(let message):
+            throw NSError(domain: "Maruko.RewriteRules", code: 2, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        context.insert(rule)
+        try context.save()
+        _ = try loadRewriteRules()
+    }
+
+    func updateRewriteRule(_ rule: RewriteRule, from draft: RewriteRuleDraft) throws {
+        guard let context = modelContext else { return }
+
+        let name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if name.isEmpty {
+            throw NSError(domain: "Maruko.RewriteRules", code: 4, userInfo: [NSLocalizedDescriptionKey: "Rule name cannot be empty."])
+        }
+
+        rule.name = name
+        rule.isEnabled = draft.isEnabled
+        rule.order = draft.order
+        rule.matchField = draft.matchField
+        rule.pattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        rule.replacementTemplate = draft.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        rule.isCaseSensitive = draft.isCaseSensitive
+        rule.updatedAt = Date()
+
+        switch BookmarkRewriteEngine.validate(rule: rule) {
+        case .valid:
+            break
+        case .invalid(let message):
+            throw NSError(domain: "Maruko.RewriteRules", code: 3, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+
+        try context.save()
+        _ = try loadRewriteRules()
+    }
+
+    func setRewriteRuleEnabled(_ rule: RewriteRule, isEnabled: Bool) {
+        guard let context = modelContext else { return }
+        rule.isEnabled = isEnabled
+        rule.updatedAt = Date()
+        do {
+            try context.save()
+            _ = try loadRewriteRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func deleteRewriteRule(_ rule: RewriteRule) {
+        guard let context = modelContext else { return }
+        context.delete(rule)
+        do {
+            try context.save()
+            try normalizeRewriteRuleOrder()
+            _ = try loadRewriteRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func moveRewriteRule(_ rule: RewriteRule, direction: Int) {
+        do {
+            var ordered = try loadRewriteRules()
+            guard let index = ordered.firstIndex(where: { $0.id == rule.id }) else { return }
+            let target = index + direction
+            guard ordered.indices.contains(target) else { return }
+            ordered.swapAt(index, target)
+            try persistRewriteRuleOrder(ordered)
+            _ = try loadRewriteRules()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func applyRewriteAndGrouping(
+        toAllBookmarksIn context: ModelContext,
+        groupingRules: [GroupingRule],
+        rewriteRules: [RewriteRule]
+    ) throws -> (rewriteChanged: Int, groupingChanged: Int) {
         let all = try context.fetch(FetchDescriptor<Bookmark>())
         var didChange = false
-        var changedCount = 0
+        var rewriteChanged = 0
+        var groupingChanged = 0
 
         for bookmark in all {
+            let rewrittenTitle = BookmarkRewriteEngine.rewrite(title: bookmark.title, url: bookmark.url, rules: rewriteRules)
             let classification = BookmarkRuleEngine.classify(
-                title: bookmark.title,
+                title: rewrittenTitle,
                 url: bookmark.url,
                 fallbackGroup: normalizedGroupName(bookmark.group),
-                rules: rules
+                rules: groupingRules
             )
 
-            var changedThisBookmark = false
-            if bookmark.title != classification.title {
-                bookmark.title = classification.title
+            if bookmark.title != rewrittenTitle {
+                bookmark.title = rewrittenTitle
                 didChange = true
-                changedThisBookmark = true
+                rewriteChanged += 1
             }
             if bookmark.group != classification.group {
                 bookmark.group = classification.group
                 didChange = true
-                changedThisBookmark = true
-            }
-            if changedThisBookmark {
-                changedCount += 1
+                groupingChanged += 1
             }
         }
 
@@ -536,7 +784,7 @@ final class BookmarkStore: ObservableObject {
             try context.save()
         }
 
-        return changedCount
+        return (rewriteChanged: rewriteChanged, groupingChanged: groupingChanged)
     }
 
     private func persistRuleOrder(_ ordered: [GroupingRule]) throws {
@@ -553,6 +801,22 @@ final class BookmarkStore: ObservableObject {
     private func normalizeRuleOrder() throws {
         let ordered = BookmarkRuleEngine.sortedRules(groupingRules)
         try persistRuleOrder(ordered)
+    }
+
+    private func persistRewriteRuleOrder(_ ordered: [RewriteRule]) throws {
+        guard let context = modelContext else { return }
+        for (index, rule) in ordered.enumerated() {
+            if rule.order != index {
+                rule.order = index
+                rule.updatedAt = Date()
+            }
+        }
+        try context.save()
+    }
+
+    private func normalizeRewriteRuleOrder() throws {
+        let ordered = BookmarkRewriteEngine.sortedRules(rewriteRules)
+        try persistRewriteRuleOrder(ordered)
     }
 
     private func normalizeStoredGroupsIfNeeded(in context: ModelContext) throws {

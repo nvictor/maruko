@@ -34,18 +34,16 @@ enum BookmarkRuleEngine {
         fallbackGroup: String = "Ungrouped",
         rules: [GroupingRule]
     ) -> BookmarkClassification {
-        let normalizedTitle = normalizedTitleForCodeHosts(originalTitle: title, url: url)
-
         for rule in sortedRules(rules) where rule.isEnabled {
-            if matches(rule: rule, title: normalizedTitle, url: url) {
+            if matches(rule: rule, title: title, url: url) {
                 let group = normalizedGroupName(rule.targetGroup)
-                return BookmarkClassification(title: normalizedTitle, group: group)
+                return BookmarkClassification(title: title, group: group)
             }
         }
 
         let host = DomainExtractor.domain(from: url)
         let fallback = registrableDomain(fromHost: host) ?? normalizedGroupName(fallbackGroup)
-        return BookmarkClassification(title: normalizedTitle, group: fallback)
+        return BookmarkClassification(title: title, group: fallback)
     }
 
     static func validate(rule: GroupingRule) -> RuleValidationResult {
@@ -193,34 +191,6 @@ enum BookmarkRuleEngine {
         let created = try NSRegularExpression(pattern: pattern, options: options)
         regexCache[key] = created
         return created
-    }
-
-    private static func normalizedTitleForCodeHosts(originalTitle: String, url: String) -> String {
-        guard let parsedURL = URL(string: url), let host = parsedURL.host?.lowercased() else {
-            return originalTitle
-        }
-
-        let pathParts = parsedURL.path
-            .split(separator: "/")
-            .map(String.init)
-
-        guard pathParts.count >= 2 else {
-            return originalTitle
-        }
-
-        let owner = pathParts[0].lowercased()
-        let repo = pathParts[1].lowercased()
-
-        switch host {
-        case "github.com":
-            return "github \(owner)/\(repo)"
-        case "gitlab.com":
-            return "gitlab \(owner)/\(repo)"
-        case "bitbucket.org":
-            return "bitbucket \(owner)/\(repo)"
-        default:
-            return originalTitle
-        }
     }
 
     private static func registrableDomain(fromHost host: String) -> String? {

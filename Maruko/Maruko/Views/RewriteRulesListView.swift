@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct RulesListView: View {
+struct RewriteRulesListView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: BookmarkStore
 
@@ -8,21 +8,17 @@ struct RulesListView: View {
     @State private var showingAddRule = false
     @State private var editingRuleID: UUID?
 
-    private var selectedRule: GroupingRule? {
-        store.groupingRules.first(where: { $0.id == selectedRuleID })
+    private var selectedRule: RewriteRule? {
+        store.rewriteRules.first(where: { $0.id == selectedRuleID })
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("Grouping Rules")
+                Text("Rewrite Rules")
                     .font(.headline)
-
                 Spacer()
-
-                Button("Done") {
-                    dismiss()
-                }
+                Button("Done") { dismiss() }
             }
             .padding()
 
@@ -30,25 +26,20 @@ struct RulesListView: View {
 
             List(selection: $selectedRuleID) {
                 HStack {
-                    Text("On")
-                        .frame(width: 44, alignment: .leading)
-                    Text("Name")
-                        .frame(width: 180, alignment: .leading)
-                    Text("Type")
-                        .frame(width: 140, alignment: .leading)
-                    Text("Pattern")
-                        .frame(width: 220, alignment: .leading)
-                    Text("Target")
-                        .frame(width: 180, alignment: .leading)
+                    Text("On").frame(width: 44, alignment: .leading)
+                    Text("Name").frame(width: 180, alignment: .leading)
+                    Text("Field").frame(width: 100, alignment: .leading)
+                    Text("Pattern").frame(width: 240, alignment: .leading)
+                    Text("Replacement").frame(width: 240, alignment: .leading)
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-                ForEach(store.groupingRules, id: \.id) { rule in
+                ForEach(store.rewriteRules, id: \.id) { rule in
                     HStack {
                         Toggle("", isOn: Binding(
                             get: { rule.isEnabled },
-                            set: { store.setRuleEnabled(rule, isEnabled: $0) }
+                            set: { store.setRewriteRuleEnabled(rule, isEnabled: $0) }
                         ))
                         .labelsHidden()
                         .frame(width: 44, alignment: .leading)
@@ -57,21 +48,18 @@ struct RulesListView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .frame(width: 180, alignment: .leading)
-
-                        Text(rule.kind.rawValue)
+                        Text(rule.matchField.rawValue)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(width: 140, alignment: .leading)
-
+                            .frame(width: 100, alignment: .leading)
                         Text(rule.pattern)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(width: 220, alignment: .leading)
-
-                        Text(rule.targetGroup)
+                            .frame(width: 240, alignment: .leading)
+                        Text(rule.replacementTemplate)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(width: 180, alignment: .leading)
+                            .frame(width: 240, alignment: .leading)
                     }
                     .tag(rule.id)
                 }
@@ -80,9 +68,7 @@ struct RulesListView: View {
             Divider()
 
             HStack {
-                Button("Add Rule") {
-                    showingAddRule = true
-                }
+                Button("Add Rule") { showingAddRule = true }
 
                 Button("Edit Rule") {
                     editingRuleID = selectedRuleID
@@ -91,7 +77,7 @@ struct RulesListView: View {
 
                 Button("Delete Rule", role: .destructive) {
                     if let selectedRule {
-                        store.deleteRule(selectedRule)
+                        store.deleteRewriteRule(selectedRule)
                         selectedRuleID = nil
                     }
                 }
@@ -100,44 +86,39 @@ struct RulesListView: View {
                 Spacer()
 
                 Button("Move Up") {
-                    if let selectedRule {
-                        store.moveRule(selectedRule, direction: -1)
-                    }
+                    if let selectedRule { store.moveRewriteRule(selectedRule, direction: -1) }
                 }
                 .disabled(!canMoveUp)
 
                 Button("Move Down") {
-                    if let selectedRule {
-                        store.moveRule(selectedRule, direction: 1)
-                    }
+                    if let selectedRule { store.moveRewriteRule(selectedRule, direction: 1) }
                 }
                 .disabled(!canMoveDown)
             }
             .padding()
         }
-        .frame(minWidth: 780, minHeight: 460)
+        .frame(minWidth: 900, minHeight: 460)
         .onAppear {
             do {
-                _ = try store.loadRules()
+                _ = try store.loadRewriteRules()
             } catch {
                 store.errorMessage = error.localizedDescription
             }
         }
         .sheet(isPresented: $showingAddRule) {
-            RuleEditorView(
-                title: "Add Rule",
-                initialDraft: GroupingRuleDraft(
+            RewriteRuleEditorView(
+                title: "Add Rewrite Rule",
+                initialDraft: RewriteRuleDraft(
                     name: "",
                     isEnabled: true,
-                    order: store.groupingRules.count,
-                    kind: .containsText,
-                    pattern: "",
-                    targetGroup: "Ungrouped",
+                    order: store.rewriteRules.count,
                     matchField: .title,
+                    pattern: "",
+                    replacementTemplate: "",
                     isCaseSensitive: false
                 )
             ) { draft in
-                try store.addRule(from: draft)
+                try store.addRewriteRule(from: draft)
             }
         }
         .sheet(isPresented: Binding(
@@ -145,11 +126,11 @@ struct RulesListView: View {
             set: { if !$0 { editingRuleID = nil } }
         )) {
             if let rule = selectedRule {
-                RuleEditorView(
-                    title: "Edit Rule",
-                    initialDraft: GroupingRuleDraft(rule: rule)
+                RewriteRuleEditorView(
+                    title: "Edit Rewrite Rule",
+                    initialDraft: RewriteRuleDraft(rule: rule)
                 ) { draft in
-                    try store.updateRule(rule, from: draft)
+                    try store.updateRewriteRule(rule, from: draft)
                 }
             }
         }
@@ -157,7 +138,7 @@ struct RulesListView: View {
 
     private var canMoveUp: Bool {
         guard let selectedRule,
-              let index = store.groupingRules.firstIndex(where: { $0.id == selectedRule.id }) else {
+              let index = store.rewriteRules.firstIndex(where: { $0.id == selectedRule.id }) else {
             return false
         }
         return index > 0
@@ -165,9 +146,9 @@ struct RulesListView: View {
 
     private var canMoveDown: Bool {
         guard let selectedRule,
-              let index = store.groupingRules.firstIndex(where: { $0.id == selectedRule.id }) else {
+              let index = store.rewriteRules.firstIndex(where: { $0.id == selectedRule.id }) else {
             return false
         }
-        return index < store.groupingRules.count - 1
+        return index < store.rewriteRules.count - 1
     }
 }

@@ -6,8 +6,9 @@ struct ContentView: View {
     @StateObject private var store = BookmarkStore()
     @State private var showingClearConfirmation = false
     @State private var showingRules = false
+    @State private var showingRewriteRules = false
     @State private var showingApplyPreview = false
-    @State private var applyPreview: RuleApplyPreview?
+    @State private var applyPreview: BookmarkStore.ApplyPreview?
 
     var body: some View {
         NavigationSplitView {
@@ -42,6 +43,11 @@ struct ContentView: View {
 
                     Button("Grouping Rules") {
                         showingRules = true
+                    }
+                    .disabled(store.isImporting || store.isExporting)
+
+                    Button("Rewrite Rules") {
+                        showingRewriteRules = true
                     }
                     .disabled(store.isImporting || store.isExporting)
 
@@ -88,13 +94,16 @@ struct ContentView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let applyPreview {
-                Text("This will update \(applyPreview.changedCount) bookmarks and leave \(applyPreview.unchangedCount) unchanged.")
+                Text("Rewrites changed: \(applyPreview.rewriteChangedCount). Grouping changed: \(applyPreview.groupingChangedCount). Unchanged: \(applyPreview.unchangedCount).")
             } else {
                 Text("Preview unavailable.")
             }
         }
         .sheet(isPresented: $showingRules) {
             RulesListView(store: store)
+        }
+        .sheet(isPresented: $showingRewriteRules) {
+            RewriteRulesListView(store: store)
         }
         .alert("Error", isPresented: Binding(
             get: { store.errorMessage != nil },
