@@ -44,10 +44,12 @@ jobs:
       - name: Build and Archive App
         run: |
           set -o pipefail
+          test -n "${{ secrets.SPARKLE_PUBLIC_ED_KEY }}"
           xcodebuild -project "Maruko/Maruko.xcodeproj" \
             -scheme "Maruko" \
             -configuration Release \
             -archivePath "$PWD/build/Maruko.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
             -destination "platform=macOS,arch=arm64" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             DEBUG_INFORMATION_FORMAT="dwarf" \
@@ -55,6 +57,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             CODE_SIGN_IDENTITY="Developer ID Application: Victor Noagbodji (2DZ6D8C78T)" \
+            SPARKLE_PUBLIC_ED_KEY="${{ secrets.SPARKLE_PUBLIC_ED_KEY }}" \
             archive
 
       - name: Export App
@@ -80,9 +83,26 @@ jobs:
             -srcfolder "build/Maruko.app" \
             -ov -format UDZO "build/Maruko.dmg"
 
-      - name: Upload DMG to Release
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          test -n "$SPARKLE_PRIVATE_KEY"
+          mkdir -p build/sparkle-updates
+          cp "build/Maruko.dmg" "build/sparkle-updates/Maruko.dmg"
+          printf '%s' "$SPARKLE_PRIVATE_KEY" > build/sparkle_ed25519.key
+          chmod 600 build/sparkle_ed25519.key
+          build/DerivedData/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast \
+            --ed-key-file build/sparkle_ed25519.key \
+            --download-url-prefix "https://github.com/nvictor/maruko/releases/download/${GITHUB_REF_NAME}/" \
+            build/sparkle-updates
+
+      - name: Upload DMG and Sparkle appcast to Release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/Maruko.dmg
+          files: |
+            build/Maruko.dmg
+            build/sparkle-updates/appcast.xml
+            build/sparkle-updates/*.delta
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
