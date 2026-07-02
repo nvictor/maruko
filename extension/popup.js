@@ -22,6 +22,14 @@ let pairing = null; // { port, token }
 let pollTimer = null;
 let applying = false;
 
+function failureResult(message) {
+  return {
+    ok: false,
+    counts: { deleted: 0, retitled: 0, moved: 0 },
+    errors: [{ op: "apply", id: null, message }],
+  };
+}
+
 function setStatus(text, kind) {
   els.status.textContent = text || "";
   els.status.className = "status" + (kind ? " " + kind : "");
@@ -157,10 +165,14 @@ async function poll(sessionId) {
       els.send.disabled = true;
       setStatus("Review the plan in Maruko and click Apply via Extension.");
       break;
+    case "opsReady":
     case "applying":
       if (ops && !applying) {
         stopPolling();
         await applyAndReport(sessionId, ops);
+      } else {
+        els.send.disabled = true;
+        setStatus("Waiting for Maruko to send the operations…");
       }
       break;
     case "applied":
@@ -193,7 +205,14 @@ async function applyAndReport(sessionId, ops) {
       setStatus(`Finished with ${result.errors.length} errors: ${result.errors[0].message}`, "error");
     }
   } catch (error) {
-    setStatus(`Applying failed: ${error.message}`, "error");
+    const message = String(error.message || error);
+    try {
+      await api("POST", `/session/${sessionId}/result`, failureResult(message));
+      await chrome.storage.local.remove("sessionId");
+    } catch {
+      // Keep the session id so reopening the popup can try to report or apply again.
+    }
+    setStatus(`Applying failed: ${message}`, "error");
   } finally {
     applying = false;
     els.keepOpen.hidden = true;

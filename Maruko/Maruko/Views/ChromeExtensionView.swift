@@ -14,23 +14,26 @@ struct ChromeExtensionView: View {
     @State private var filterText = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let statusMessage = extensionStore.statusMessage {
-                banner(statusMessage, systemImage: "checkmark.circle", tint: .green) {
-                    extensionStore.statusMessage = nil
+        GeometryReader { geometry in
+            VStack(spacing: 0) {
+                if let statusMessage = extensionStore.statusMessage {
+                    banner(statusMessage, systemImage: "checkmark.circle", tint: .green) {
+                        extensionStore.statusMessage = nil
+                    }
+                    Divider()
                 }
+
+                if let aiNotice = extensionStore.aiNotice {
+                    banner(aiNotice, systemImage: "sparkles", tint: .yellow)
+                    Divider()
+                }
+
+                setupSection
                 Divider()
+
+                content
             }
-
-            if let aiNotice = extensionStore.aiNotice {
-                banner(aiNotice, systemImage: "sparkles", tint: .yellow)
-                Divider()
-            }
-
-            setupSection
-            Divider()
-
-            content
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
         }
         .navigationTitle("Chrome Extension")
         .searchable(text: $filterText, placement: .toolbar, prompt: "Filter by title or URL")
