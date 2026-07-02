@@ -13,5 +13,11 @@ struct MarukoApp: App {
         .commands {
             CheckForUpdatesCommands(updater: updater)
         }
+
+        Window("Rewrite Rules", id: "rewriteRules") {
+            RewriteRulesWindowView()
+        }
+        .modelContainer(AppModelContainer.shared)
+        .defaultSize(width: 780, height: 520)
     }
 }

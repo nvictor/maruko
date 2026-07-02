@@ -83,9 +83,7 @@ enum BookmarkRewriteEngine {
             if pattern.isEmpty {
                 return .invalid(message: "Pattern cannot be empty.")
             }
-            if replacement.isEmpty {
-                return .invalid(message: "Replacement cannot be empty.")
-            }
+            // An empty replacement is allowed: it deletes the matched text.
 
             do {
                 _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)

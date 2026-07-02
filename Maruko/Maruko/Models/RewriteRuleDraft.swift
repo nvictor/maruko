@@ -23,6 +23,23 @@ struct RewriteRuleDraft {
 }
 
 extension RewriteRuleDraft {
+    /// A throwaway snapshot for validating the draft and running the live
+    /// "Try it" preview through the real engine.
+    func previewSnapshot() -> RewriteRuleSnapshot {
+        RewriteRuleSnapshot(
+            id: UUID(),
+            name: name,
+            isEnabled: true,
+            order: order,
+            kind: kind,
+            matchField: matchField,
+            pattern: pattern,
+            replacementTemplate: replacementTemplate,
+            isCaseSensitive: isCaseSensitive,
+            createdAt: Date()
+        )
+    }
+
     init(rule: RewriteRule) {
         self.name = rule.name
         self.isEnabled = rule.isEnabled

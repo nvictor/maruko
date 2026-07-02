@@ -3,9 +3,9 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openWindow) private var openWindow
     @StateObject private var store = BrowserFormatStore()
     @StateObject private var rulesStore = RewriteRulesStore()
-    @State private var showingRewriteRules = false
 
     var body: some View {
         NavigationSplitView {
@@ -32,15 +32,12 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .automatic) {
                 Button {
-                    showingRewriteRules = true
+                    openWindow(id: "rewriteRules")
                 } label: {
                     Label("Rewrite Rules", systemImage: "wand.and.stars")
                 }
                 .help("Edit the title rewrite rules applied by Format Bookmarks")
             }
-        }
-        .sheet(isPresented: $showingRewriteRules) {
-            RewriteRulesListView(store: rulesStore)
         }
         .alert("Error", isPresented: errorBinding(for: store)) {
             Button("OK", role: .cancel) {}

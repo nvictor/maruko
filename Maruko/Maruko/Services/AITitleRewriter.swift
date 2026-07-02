@@ -20,12 +20,19 @@ nonisolated enum AITitleGenerationError: Error {
 /// option change; without this every re-run would redo minutes of on-device
 /// generation. Survives cancellation (flushed after every batch).
 nonisolated final class AIRewriteCache: @unchecked Sendable {
+    /// Bump whenever the generation prompt template changes: proposals made
+    /// under an older prompt are stale even though the user's rule text (part
+    /// of the key) is unchanged.
+    static let currentPromptVersion = "2"
+
     private let fileURL: URL
+    private let promptVersion: String
     private let lock = NSLock()
     private var entries: [String: String]
 
-    init(fileURL: URL) {
+    init(fileURL: URL, promptVersion: String = AIRewriteCache.currentPromptVersion) {
         self.fileURL = fileURL
+        self.promptVersion = promptVersion
         if let data = try? Data(contentsOf: fileURL),
            let stored = try? JSONDecoder().decode([String: String].self, from: data) {
             entries = stored
@@ -44,13 +51,13 @@ nonisolated final class AIRewriteCache: @unchecked Sendable {
     func proposal(guid: String, title: String, instructions: String) -> String? {
         lock.lock()
         defer { lock.unlock() }
-        return entries[Self.key(guid: guid, title: title, instructions: instructions)]
+        return entries[key(guid: guid, title: title, instructions: instructions)]
     }
 
     func store(proposal: String, guid: String, title: String, instructions: String) {
         lock.lock()
         defer { lock.unlock() }
-        entries[Self.key(guid: guid, title: title, instructions: instructions)] = proposal
+        entries[key(guid: guid, title: title, instructions: instructions)] = proposal
     }
 
     func flush() {
@@ -66,12 +73,12 @@ nonisolated final class AIRewriteCache: @unchecked Sendable {
         try? data.write(to: fileURL)
     }
 
-    private static func key(guid: String, title: String, instructions: String) -> String {
+    private func key(guid: String, title: String, instructions: String) -> String {
         let titleHash = SHA256.hash(data: Data(title.utf8)).prefix(8)
             .map { String(format: "%02x", $0) }.joined()
         let instructionsHash = SHA256.hash(data: Data(instructions.utf8)).prefix(8)
             .map { String(format: "%02x", $0) }.joined()
-        return "\(guid)|\(titleHash)|\(instructionsHash)"
+        return "\(guid)|\(titleHash)|\(instructionsHash)|v\(promptVersion)"
     }
 }
 
@@ -142,7 +149,10 @@ nonisolated struct AITitleRewriter {
             }
 
             for (candidate, proposal) in zip(batch, proposals) {
-                guard let accepted = Self.sanitize(proposal, original: candidate.title) else { continue }
+                // No or unusable proposal means the rules don't apply (the
+                // generator returns entries only for changed titles) — cache
+                // the old title so the item never goes back to the model.
+                let accepted = Self.sanitize(proposal) ?? candidate.title
                 cache.store(
                     proposal: accepted,
                     guid: candidate.guid,
@@ -162,9 +172,9 @@ nonisolated struct AITitleRewriter {
         return overrides
     }
 
-    /// Returns the usable title, or nil when the proposal should be ignored
-    /// (and not cached, so a later run may retry).
-    private static func sanitize(_ proposal: String?, original: String) -> String? {
+    /// Returns the usable title, or nil for a missing/empty/oversized
+    /// proposal (the caller keeps the old title in that case).
+    private static func sanitize(_ proposal: String?) -> String? {
         guard let proposal else { return nil }
         let trimmed = proposal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= Self.maximumTitleLength else { return nil }

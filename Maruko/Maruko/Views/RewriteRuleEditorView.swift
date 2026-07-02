@@ -1,88 +1,155 @@
 import SwiftUI
 
-struct RewriteRuleEditorView: View {
-    @Environment(\.dismiss) private var dismiss
+/// The rule-editing form, embedded in the right pane of the rules window.
+/// The parent owns Save/Revert; this view edits the bound draft in place.
+struct RewriteRuleFormView: View {
+    @Binding var draft: RewriteRuleDraft
 
-    let title: String
-    let initialDraft: RewriteRuleDraft
-    let onSave: (RewriteRuleDraft) throws -> Void
-
-    @State private var draft: RewriteRuleDraft
-    @State private var validationError: String?
-
-    init(title: String, initialDraft: RewriteRuleDraft, onSave: @escaping (RewriteRuleDraft) throws -> Void) {
-        self.title = title
-        self.initialDraft = initialDraft
-        self.onSave = onSave
-        _draft = State(initialValue: initialDraft)
-    }
+    @State private var sampleTitle = "How to Cook Rice | Bon Appétit"
+    @State private var sampleURL = "https://bonappetit.com/rice"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Form {
-                TextField("Name", text: $draft.name)
+        Form {
+            TextField("Name", text: $draft.name)
 
-                Picker("Kind", selection: $draft.kind) {
-                    ForEach(RewriteRuleKind.allCases, id: \.self) { kind in
-                        Text(kind.displayName).tag(kind)
-                    }
+            Picker("Kind", selection: $draft.kind) {
+                ForEach(RewriteRuleKind.allCases, id: \.self) { kind in
+                    Text(kind.displayName).tag(kind)
                 }
-                .pickerStyle(.segmented)
-
-                switch draft.kind {
-                case .regexMatchReplace:
-                    TextField("Regex Pattern", text: $draft.pattern)
-                    TextField("Replacement", text: $draft.replacementTemplate)
-
-                    Picker("Match Field", selection: $draft.matchField) {
-                        Text("Title").tag(RewriteMatchField.title)
-                        Text("URL").tag(RewriteMatchField.url)
-                        Text("Title or URL").tag(RewriteMatchField.titleOrURL)
-                    }
-
-                    Toggle("Case Sensitive", isOn: $draft.isCaseSensitive)
-
-                case .aiPrompt:
-                    Section {
-                        TextEditor(text: $draft.replacementTemplate)
-                            .font(.body)
-                            .frame(minHeight: 96)
-                    } header: {
-                        Text("Instructions")
-                    } footer: {
-                        Text("Plain-language rules for the on-device model, e.g. \"Remove trailing site names and use sentence case.\" Applies only to recently opened bookmarks.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Toggle("Enabled", isOn: $draft.isEnabled)
             }
-            .formStyle(.grouped)
+            .pickerStyle(.segmented)
 
-            if let validationError {
-                Text(validationError)
-                    .foregroundStyle(.red)
-                    .font(.caption)
+            switch draft.kind {
+            case .regexMatchReplace:
+                regexFields
+            case .aiPrompt:
+                aiFields
             }
 
-            HStack {
-                Spacer()
-                Button("Cancel") { dismiss() }
-                Button("Save") { save() }
-                    .keyboardShortcut(.defaultAction)
-            }
+            Toggle("Enabled", isOn: $draft.isEnabled)
         }
-        .padding()
-        .frame(minWidth: 520, minHeight: 400)
-        .navigationTitle(title)
+        .formStyle(.grouped)
     }
 
-    private func save() {
-        do {
-            try onSave(draft)
-            dismiss()
-        } catch {
-            validationError = error.localizedDescription
+    // MARK: - Regex kind
+
+    @ViewBuilder
+    private var regexFields: some View {
+        Section {
+            TextField("Regex Pattern", text: $draft.pattern)
+                .font(.body.monospaced())
+            TextField("Replacement (empty deletes the match)", text: $draft.replacementTemplate)
+                .font(.body.monospaced())
+
+            Picker("Match Field", selection: $draft.matchField) {
+                Text("Title").tag(RewriteMatchField.title)
+                Text("URL").tag(RewriteMatchField.url)
+                Text("Title or URL").tag(RewriteMatchField.titleOrURL)
+            }
+
+            Toggle("Case Sensitive", isOn: $draft.isCaseSensitive)
+        } header: {
+            HStack {
+                Text("Pattern")
+                Spacer()
+                Menu("Insert Example") {
+                    ForEach(RegexExample.all) { example in
+                        Button(example.name) {
+                            insert(example)
+                        }
+                    }
+                }
+                .fixedSize()
+            }
+        }
+
+        Section("Try It") {
+            TextField("Sample title", text: $sampleTitle)
+            if draft.matchField != .title {
+                TextField("Sample URL", text: $sampleURL)
+            }
+            LabeledContent("Result") {
+                previewResult
+            }
+        }
+
+        Section {
+            cheatSheet
+        }
+    }
+
+    @ViewBuilder
+    private var previewResult: some View {
+        switch BookmarkRewriteEngine.validate(snapshot: draft.previewSnapshot(), name: "Preview") {
+        case .invalid(let message):
+            Text(message)
+                .foregroundStyle(.red)
+        case .valid:
+            let rewritten = BookmarkRewriteEngine.rewrite(
+                title: sampleTitle,
+                url: sampleURL,
+                snapshots: [draft.previewSnapshot()]
+            )
+            if rewritten == sampleTitle {
+                Text("No match — sample stays “\(sampleTitle)”")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text(rewritten)
+                    .fontWeight(.medium)
+            }
+        }
+    }
+
+    private var cheatSheet: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Regex quick reference")
+                .font(.caption.weight(.semibold))
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
+                cheatRow("( … )", "captures text you can reuse as $1, $2, …")
+                cheatRow(".*", "any text (including nothing)")
+                cheatRow(#"\s"#, "a space, tab, or line break")
+                cheatRow("^ and $", "start and end of the text")
+                cheatRow("(?i)", "put at the front to ignore letter case")
+                cheatRow("${titlecase:1}", "Maruko extra: capture 1 in Title Case")
+            }
+            .font(.caption)
+        }
+        .foregroundStyle(.secondary)
+    }
+
+    private func cheatRow(_ token: String, _ meaning: String) -> some View {
+        GridRow {
+            Text(token)
+                .font(.caption.monospaced())
+            Text(meaning)
+        }
+    }
+
+    private func insert(_ example: RegexExample) {
+        draft.pattern = example.pattern
+        draft.replacementTemplate = example.replacement
+        draft.matchField = example.matchField
+        draft.isCaseSensitive = false
+        if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft.name = example.name
+        }
+        sampleTitle = example.sampleTitle
+        sampleURL = example.sampleURL
+    }
+
+    // MARK: - AI kind
+
+    @ViewBuilder
+    private var aiFields: some View {
+        Section {
+            TextEditor(text: $draft.replacementTemplate)
+                .font(.body)
+                .frame(minHeight: 96)
+        } header: {
+            Text("Instructions")
+        } footer: {
+            Text("Plain-language rules for the on-device model, e.g. \"Remove trailing site names and use sentence case.\" Applies only to recently opened bookmarks.")
+                .foregroundStyle(.secondary)
         }
     }
 }

@@ -161,6 +161,55 @@ struct AITitleRewriterTests {
         #expect(overrides.count == 4)
     }
 
+    @Test func staleCacheFromOlderPromptVersionIsIgnored() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ai-cache-\(UUID().uuidString).json")
+        let calls = Counter()
+        let rewriter = AITitleRewriter { batch, _ in
+            await calls.increment()
+            return batch.map { "Clean \($0.title)" }
+        }
+
+        _ = try await rewriter.rewriteTitles(
+            candidates: candidates(3),
+            instructions: "clean up",
+            cache: AIRewriteCache(fileURL: fileURL, promptVersion: "1")
+        )
+        _ = try await rewriter.rewriteTitles(
+            candidates: candidates(3),
+            instructions: "clean up",
+            cache: AIRewriteCache(fileURL: fileURL, promptVersion: "2")
+        )
+
+        // The v1 entries must not satisfy v2 lookups.
+        #expect(await calls.value == 2)
+    }
+
+    @Test func skippedItemsAreCachedAsKeepOld() async throws {
+        let cache = makeCache()
+        let calls = Counter()
+        // Generator changes nothing (conditional rule matched no titles).
+        let rewriter = AITitleRewriter { batch, _ in
+            await calls.increment()
+            return batch.map { _ in nil }
+        }
+
+        let first = try await rewriter.rewriteTitles(
+            candidates: candidates(6),
+            instructions: "only titles containing article",
+            cache: cache
+        )
+        let second = try await rewriter.rewriteTitles(
+            candidates: candidates(6),
+            instructions: "only titles containing article",
+            cache: cache
+        )
+
+        #expect(first.isEmpty && second.isEmpty)
+        // The skip decision is cached: the second run never hits the model.
+        #expect(await calls.value == 1)
+    }
+
     @Test func emptyInstructionsOrCandidatesShortCircuit() async throws {
         let rewriter = AITitleRewriter { _, _ in
             Issue.record("generator should not be called")
