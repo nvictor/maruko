@@ -11,13 +11,9 @@ enum RewriteValidationResult {
     case invalid(message: String)
 }
 
-struct RewritePreview {
-    let changedCount: Int
-    let unchangedCount: Int
-}
-
 enum BookmarkRewriteEngine {
     nonisolated(unsafe) private static var regexCache: [String: NSRegularExpression] = [:]
+    nonisolated private static let regexCacheLock = NSLock()
 
     static func sortedRules(_ rules: [RewriteRule]) -> [RewriteRule] {
         rules.sorted {
@@ -28,9 +24,21 @@ enum BookmarkRewriteEngine {
     }
 
     static func rewrite(title: String, url: String, rules: [RewriteRule]) -> String {
+        rewrite(title: title, url: url, snapshots: rules.map(\.snapshot))
+    }
+
+    nonisolated static func sortedSnapshots(_ rules: [RewriteRuleSnapshot]) -> [RewriteRuleSnapshot] {
+        rules.sorted {
+            if $0.order != $1.order { return $0.order < $1.order }
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    nonisolated static func rewrite(title: String, url: String, snapshots: [RewriteRuleSnapshot]) -> String {
         var rewrittenTitle = title
 
-        for rule in sortedRules(rules) where rule.isEnabled {
+        for rule in sortedSnapshots(snapshots) where rule.isEnabled {
             if let rewritten = apply(rule: rule, currentTitle: rewrittenTitle, url: url) {
                 rewrittenTitle = rewritten
             }
@@ -40,11 +48,15 @@ enum BookmarkRewriteEngine {
     }
 
     static func validate(rule: RewriteRule) -> RewriteValidationResult {
-        let name = rule.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pattern = rule.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        let replacement = rule.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+        validate(snapshot: rule.snapshot, name: rule.name)
+    }
 
-        if name.isEmpty {
+    nonisolated static func validate(snapshot: RewriteRuleSnapshot, name: String) -> RewriteValidationResult {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = snapshot.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        let replacement = snapshot.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedName.isEmpty {
             return .invalid(message: "Rule name cannot be empty.")
         }
         if pattern.isEmpty {
@@ -55,7 +67,7 @@ enum BookmarkRewriteEngine {
         }
 
         do {
-            _ = try regex(for: pattern, caseSensitive: rule.isCaseSensitive)
+            _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)
         } catch {
             return .invalid(message: "Invalid regex: \(error.localizedDescription)")
         }
@@ -74,19 +86,6 @@ enum BookmarkRewriteEngine {
                     return RewriteValidationIssue(id: rule.id, ruleName: rule.name, message: message)
                 }
             }
-    }
-
-    static func previewImpact(bookmarks: [Bookmark], rules: [RewriteRule]) -> RewritePreview {
-        var changed = 0
-
-        for bookmark in bookmarks {
-            let rewritten = rewrite(title: bookmark.title, url: bookmark.url, rules: rules)
-            if rewritten != bookmark.title {
-                changed += 1
-            }
-        }
-
-        return RewritePreview(changedCount: changed, unchangedCount: bookmarks.count - changed)
     }
 
     static func makeDefaultRules() -> [RewriteRule] {
@@ -112,7 +111,7 @@ enum BookmarkRewriteEngine {
         ]
     }
 
-    private static func apply(rule: RewriteRule, currentTitle: String, url: String) -> String? {
+    nonisolated private static func apply(rule: RewriteRuleSnapshot, currentTitle: String, url: String) -> String? {
         guard let expression = try? regex(for: rule.pattern, caseSensitive: rule.isCaseSensitive) else {
             return nil
         }
@@ -131,7 +130,7 @@ enum BookmarkRewriteEngine {
         return nil
     }
 
-    private static func fieldsToSearch(_ field: RewriteMatchField, title: String, url: String) -> [String] {
+    nonisolated private static func fieldsToSearch(_ field: RewriteMatchField, title: String, url: String) -> [String] {
         switch field {
         case .title:
             return [title]
@@ -142,18 +141,26 @@ enum BookmarkRewriteEngine {
         }
     }
 
-    private static func regex(for pattern: String, caseSensitive: Bool) throws -> NSRegularExpression {
+    nonisolated private static func regex(for pattern: String, caseSensitive: Bool) throws -> NSRegularExpression {
         let key = "\(caseSensitive ? "1" : "0"):\(pattern)"
-        if let cached = regexCache[key] {
+
+        regexCacheLock.lock()
+        let cached = regexCache[key]
+        regexCacheLock.unlock()
+        if let cached {
             return cached
         }
+
         let options: NSRegularExpression.Options = caseSensitive ? [] : [.caseInsensitive]
         let compiled = try NSRegularExpression(pattern: pattern, options: options)
+
+        regexCacheLock.lock()
         regexCache[key] = compiled
+        regexCacheLock.unlock()
         return compiled
     }
 
-    private static func rewriteAllMatches(in input: String, expression: NSRegularExpression, template: String) -> String {
+    nonisolated private static func rewriteAllMatches(in input: String, expression: NSRegularExpression, template: String) -> String {
         let fullRange = NSRange(input.startIndex..., in: input)
         let matches = expression.matches(in: input, options: [], range: fullRange)
         guard !matches.isEmpty else { return input }
@@ -175,7 +182,7 @@ enum BookmarkRewriteEngine {
         return output
     }
 
-    private static func replacement(
+    nonisolated private static func replacement(
         for match: NSTextCheckingResult,
         in input: String,
         expression: NSRegularExpression,
@@ -232,7 +239,7 @@ enum BookmarkRewriteEngine {
         return replaced
     }
 
-    private static func titleCase(_ text: String) -> String {
+    nonisolated private static func titleCase(_ text: String) -> String {
         text
             .split(whereSeparator: \.isWhitespace)
             .map { token in

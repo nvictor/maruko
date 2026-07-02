@@ -8,11 +8,21 @@
 
 /* Begin PBXBuildFile section */
 		5A504500000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5A504500000000000000002 /* Sparkle */; };
-		A1B200000000000000000001 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = A1B200000000000000000002 /* SwiftSoup */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		571D68D82F54F52700DD19FB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 571D68B42F54F52600DD19FB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 571D68BB2F54F52600DD19FB;
+			remoteInfo = Maruko;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		571D68BC2F54F52600DD19FB /* Maruko.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maruko.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		571D68D02F54F52700DD19FB /* MarukoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarukoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -34,6 +44,11 @@
 			path = Maruko;
 			sourceTree = "<group>";
 		};
+		571D68D12F54F52700DD19FB /* MarukoTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MarukoTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -42,7 +57,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				5A504500000000000000001 /* Sparkle in Frameworks */,
-				A1B200000000000000000001 /* SwiftSoup in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		571D68D42F54F52700DD19FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				571D68BE2F54F52600DD19FB /* Maruko */,
+				571D68D12F54F52700DD19FB /* MarukoTests */,
 				571D68BD2F54F52600DD19FB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -61,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				571D68BC2F54F52600DD19FB /* Maruko.app */,
+				571D68D02F54F52700DD19FB /* MarukoTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -86,11 +109,33 @@
 			name = Maruko;
 			packageProductDependencies = (
 				5A504500000000000000002 /* Sparkle */,
-				A1B200000000000000000002 /* SwiftSoup */,
 			);
 			productName = Maruko;
 			productReference = 571D68BC2F54F52600DD19FB /* Maruko.app */;
 			productType = "com.apple.product-type.application";
+		};
+		571D68D22F54F52700DD19FB /* MarukoTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 571D68D62F54F52700DD19FB /* Build configuration list for PBXNativeTarget "MarukoTests" */;
+			buildPhases = (
+				571D68D32F54F52700DD19FB /* Sources */,
+				571D68D42F54F52700DD19FB /* Frameworks */,
+				571D68D52F54F52700DD19FB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				571D68D72F54F52700DD19FB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				571D68D12F54F52700DD19FB /* MarukoTests */,
+			);
+			name = MarukoTests;
+			packageProductDependencies = (
+			);
+			productName = MarukoTests;
+			productReference = 571D68D02F54F52700DD19FB /* MarukoTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 /* End PBXNativeTarget section */
 
@@ -105,6 +150,10 @@
 					571D68BB2F54F52600DD19FB = {
 						CreatedOnToolsVersion = 26.0.1;
 					};
+					571D68D22F54F52700DD19FB = {
+						CreatedOnToolsVersion = 26.0.1;
+						TestTargetID = 571D68BB2F54F52600DD19FB;
+					};
 				};
 			};
 			buildConfigurationList = 571D68B72F54F52600DD19FB /* Build configuration list for PBXProject "Maruko" */;
@@ -118,7 +167,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				5A504500000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				A1B200000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 571D68BD2F54F52600DD19FB /* Products */;
@@ -126,6 +174,7 @@
 			projectRoot = "";
 			targets = (
 				571D68BB2F54F52600DD19FB /* Maruko */,
+				571D68D22F54F52700DD19FB /* MarukoTests */,
 			);
 		};
 /* End PBXProject section */
@@ -138,10 +187,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		571D68D52F54F52700DD19FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		571D68D72F54F52700DD19FB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 571D68BB2F54F52600DD19FB /* Maruko */;
+			targetProxy = 571D68D82F54F52700DD19FB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXSourcesBuildPhase section */
 		571D68B82F54F52600DD19FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		571D68D32F54F52700DD19FB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -339,6 +410,42 @@
 			};
 			name = Release;
 		};
+		571D68DA2F54F52700DD19FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 2DZ6D8C78T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.9;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mellowfleet.MarukoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Maruko.app/Contents/MacOS/Maruko";
+			};
+			name = Debug;
+		};
+		571D68DB2F54F52700DD19FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 2DZ6D8C78T;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.0.9;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mellowfleet.MarukoTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Maruko.app/Contents/MacOS/Maruko";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -360,6 +467,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		571D68D62F54F52700DD19FB /* Build configuration list for PBXNativeTarget "MarukoTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				571D68DA2F54F52700DD19FB /* Debug */,
+				571D68DB2F54F52700DD19FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -371,15 +487,7 @@
 				minimumVersion = 2.9.1;
 			};
 		};
-		A1B200000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/scinfu/SwiftSoup.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.6.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
+	/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		5A504500000000000000002 /* Sparkle */ = {
@@ -387,12 +495,7 @@
 			package = 5A504500000000000000003 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
 		};
-		A1B200000000000000000002 /* SwiftSoup */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = A1B200000000000000000003 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
-			productName = SwiftSoup;
-		};
-/* End XCSwiftPackageProductDependency section */
+	/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 571D68B42F54F52600DD19FB /* Project object */;
 }

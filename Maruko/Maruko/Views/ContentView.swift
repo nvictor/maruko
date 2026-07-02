@@ -3,115 +3,68 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @StateObject private var store = BookmarkStore()
-    @State private var showingClearConfirmation = false
-    @State private var showingRules = false
+    @StateObject private var store = BrowserFormatStore()
+    @StateObject private var rulesStore = RewriteRulesStore()
     @State private var showingRewriteRules = false
-    @State private var showingApplyPreview = false
-    @State private var applyPreview: BookmarkStore.ApplyPreview?
 
     var body: some View {
         NavigationSplitView {
             SidebarView(store: store)
         } detail: {
-            VStack(spacing: 0) {
-                if store.importSummary != nil {
-                    ImportView(store: store)
-                    Divider()
-                }
-
-                BookmarkTableView(selectedGroup: store.selectedGroup, store: store)
+            if let profile = store.selectedProfile {
+                BrowserProfileView(store: store, rulesStore: rulesStore, profile: profile)
+            } else {
+                ContentUnavailableView(
+                    "Pick a browser profile",
+                    systemImage: "bookmark",
+                    description: Text(
+                        store.hasFolderAccess
+                            ? "Choose a profile in the sidebar to clean up its bookmarks."
+                            : "Grant access in the sidebar so Maruko can find your browsers' bookmarks."
+                    )
+                )
             }
-            .navigationTitle(store.selectedGroup ?? "Bookmarks")
         }
         .onAppear {
-            store.configure(context: modelContext)
+            rulesStore.configure(context: modelContext)
+            store.refresh()
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
-                Menu {
-                    Button("Import HTML") {
-                        store.showImportPanelAndImport()
-                    }
-                    .disabled(store.isImporting)
-
-                    Button("Apply Grouping") {
-                        applyPreview = store.previewGroupingImpact()
-                        showingApplyPreview = applyPreview != nil
-                    }
-                    .disabled(store.isImporting || store.isExporting)
-
-                    Button("Grouping Rules") {
-                        showingRules = true
-                    }
-                    .disabled(store.isImporting || store.isExporting)
-
-                    Button("Rewrite Rules") {
-                        showingRewriteRules = true
-                    }
-                    .disabled(store.isImporting || store.isExporting)
-
-                    Toggle(
-                        "Show Hidden",
-                        isOn: Binding(
-                            get: { store.showHiddenGroups },
-                            set: { store.setShowHiddenGroups($0) }
-                        )
-                    )
-                    .disabled(store.isImporting || store.isExporting)
-
-                    Divider()
-
-                    Button("Clear Database", role: .destructive) {
-                        showingClearConfirmation = true
-                    }
-                    .disabled(store.isImporting || store.isExporting)
+                Button {
+                    showingRewriteRules = true
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Label("Rewrite Rules", systemImage: "wand.and.stars")
                 }
+                .help("Edit the title rewrite rules applied by Format Bookmarks")
             }
-        }
-        .confirmationDialog(
-            "Clear all stored bookmarks?",
-            isPresented: $showingClearConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Clear Database", role: .destructive) {
-                store.clearDatabase()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This permanently deletes all bookmarks in Maruko.")
-        }
-        .confirmationDialog(
-            "Apply Grouping",
-            isPresented: $showingApplyPreview,
-            titleVisibility: .visible
-        ) {
-            Button("Apply Grouping") {
-                store.applyGroupingRules()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if let applyPreview {
-                Text("Rewrites changed: \(applyPreview.rewriteChangedCount). Grouping changed: \(applyPreview.groupingChangedCount). Unchanged: \(applyPreview.unchangedCount).")
-            } else {
-                Text("Preview unavailable.")
-            }
-        }
-        .sheet(isPresented: $showingRules) {
-            RulesListView(store: store)
         }
         .sheet(isPresented: $showingRewriteRules) {
-            RewriteRulesListView(store: store)
+            RewriteRulesListView(store: rulesStore)
         }
-        .alert("Error", isPresented: Binding(
-            get: { store.errorMessage != nil },
-            set: { newValue in if !newValue { store.errorMessage = nil } }
-        )) {
+        .alert("Error", isPresented: errorBinding(for: store)) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(store.errorMessage ?? "Unknown error")
         }
+        .alert("Error", isPresented: errorBinding(for: rulesStore)) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(rulesStore.errorMessage ?? "Unknown error")
+        }
+    }
+
+    private func errorBinding(for store: BrowserFormatStore) -> Binding<Bool> {
+        Binding(
+            get: { store.errorMessage != nil },
+            set: { if !$0 { store.errorMessage = nil } }
+        )
+    }
+
+    private func errorBinding(for store: RewriteRulesStore) -> Binding<Bool> {
+        Binding(
+            get: { store.errorMessage != nil },
+            set: { if !$0 { store.errorMessage = nil } }
+        )
     }
 }

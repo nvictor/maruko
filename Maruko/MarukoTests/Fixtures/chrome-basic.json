@@ -1,0 +1,97 @@
+{
+   "checksum": "1fa3c1777bddbb72084d26b31e0cdc7f",
+   "roots": {
+      "bookmark_bar": {
+         "children": [
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000005",
+               "id": "5",
+               "meta_info": {
+                  "power_bookmark_meta": ""
+               },
+               "name": "Example",
+               "type": "url",
+               "url": "https://example.com/"
+            },
+            {
+               "children": [
+                  {
+                     "date_added": "13390000000000000",
+                     "date_last_used": "0",
+                     "guid": "00000000-0000-4000-8000-000000000007",
+                     "id": "7",
+                     "name": "GitHub",
+                     "type": "url",
+                     "url": "https://github.com/nvictor/maruko",
+                     "x_unknown_key": "keep me"
+                  }
+               ],
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "date_modified": "13390000000001000",
+               "guid": "00000000-0000-4000-8000-000000000006",
+               "id": "6",
+               "name": "Dev Tools",
+               "type": "folder"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000008",
+               "id": "8",
+               "name": "Caf\u00e9 Recipes \u2615",
+               "type": "url",
+               "url": "https://cafe.example.com/recipes?b=2&a=1"
+            }
+         ],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000001",
+         "id": "1",
+         "name": "Bookmarks Bar",
+         "type": "folder"
+      },
+      "other": {
+         "children": [
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000009",
+               "id": "9",
+               "name": "Docs",
+               "type": "url",
+               "url": "https://docs.example.com/guide#intro"
+            }
+         ],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000002",
+         "id": "2",
+         "name": "Other Bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000003",
+         "id": "3",
+         "name": "Mobile Bookmarks",
+         "type": "folder"
+      }
+   },
+   "sync_metadata": "QmFzZTY0U3luY0Jsb2I=",
+   "version": 1,
+   "x_top_unknown": {
+      "nested": [
+         1,
+         2,
+         3
+      ]
+   }
+}

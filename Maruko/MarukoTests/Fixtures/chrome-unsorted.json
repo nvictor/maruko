@@ -1,0 +1,113 @@
+{
+   "checksum": "f4e699557e201c00940b65660e91ca0b",
+   "roots": {
+      "bookmark_bar": {
+         "children": [
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000004",
+               "id": "4",
+               "name": "zeta",
+               "type": "url",
+               "url": "https://z.example.com/"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000005",
+               "id": "5",
+               "name": "alpha",
+               "type": "url",
+               "url": "https://a.example.com/"
+            },
+            {
+               "children": [
+                  {
+                     "date_added": "13390000000000000",
+                     "date_last_used": "0",
+                     "guid": "00000000-0000-4000-8000-000000000007",
+                     "id": "7",
+                     "name": "beta",
+                     "type": "url",
+                     "url": "https://b.example.com/"
+                  }
+               ],
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "date_modified": "13390000000001000",
+               "guid": "00000000-0000-4000-8000-000000000006",
+               "id": "6",
+               "name": "B Folder",
+               "type": "folder"
+            },
+            {
+               "children": [
+                  {
+                     "date_added": "13390000000000000",
+                     "date_last_used": "0",
+                     "guid": "00000000-0000-4000-8000-000000000009",
+                     "id": "9",
+                     "name": "delta",
+                     "type": "url",
+                     "url": "https://d.example.com/"
+                  },
+                  {
+                     "date_added": "13390000000000000",
+                     "date_last_used": "0",
+                     "guid": "00000000-0000-4000-8000-000000000010",
+                     "id": "10",
+                     "name": "Delta",
+                     "type": "url",
+                     "url": "https://dd.example.com/"
+                  }
+               ],
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "date_modified": "13390000000001000",
+               "guid": "00000000-0000-4000-8000-000000000008",
+               "id": "8",
+               "name": "A Folder",
+               "type": "folder"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000011",
+               "id": "11",
+               "name": "Alpha",
+               "type": "url",
+               "url": "https://aa.example.com/"
+            }
+         ],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000001",
+         "id": "1",
+         "name": "Bookmarks Bar",
+         "type": "folder"
+      },
+      "other": {
+         "children": [],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000002",
+         "id": "2",
+         "name": "Other Bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000003",
+         "id": "3",
+         "name": "Mobile Bookmarks",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}

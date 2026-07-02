@@ -7,6 +7,20 @@ enum RewriteMatchField: String, CaseIterable, Codable {
     case titleOrURL
 }
 
+/// Sendable value copy of a `RewriteRule`, taken on the main actor so the
+/// rewrite engine can run off-main without touching SwiftData objects.
+struct RewriteRuleSnapshot: Sendable {
+    let id: UUID
+    let name: String
+    let isEnabled: Bool
+    let order: Int
+    let matchField: RewriteMatchField
+    let pattern: String
+    let replacementTemplate: String
+    let isCaseSensitive: Bool
+    let createdAt: Date
+}
+
 @Model
 final class RewriteRule {
     @Attribute(.unique) var id: UUID
@@ -24,6 +38,20 @@ final class RewriteRule {
     var matchField: RewriteMatchField {
         get { RewriteMatchField(rawValue: matchFieldRaw) ?? .title }
         set { matchFieldRaw = newValue.rawValue }
+    }
+
+    var snapshot: RewriteRuleSnapshot {
+        RewriteRuleSnapshot(
+            id: id,
+            name: name,
+            isEnabled: isEnabled,
+            order: order,
+            matchField: matchField,
+            pattern: pattern,
+            replacementTemplate: replacementTemplate,
+            isCaseSensitive: isCaseSensitive,
+            createdAt: createdAt
+        )
     }
 
     init(

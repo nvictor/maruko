@@ -1,0 +1,112 @@
+{
+   "checksum": "fe311fbefce2ba73a5c58b216961f3e1",
+   "roots": {
+      "bookmark_bar": {
+         "children": [
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000004",
+               "id": "4",
+               "name": "First",
+               "type": "url",
+               "url": "https://example.com/page"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000005",
+               "id": "5",
+               "name": "Trailing slash dupe",
+               "type": "url",
+               "url": "https://example.com/page/"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000006",
+               "id": "6",
+               "name": "Fragment dupe",
+               "type": "url",
+               "url": "https://example.com/page#section"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000007",
+               "id": "7",
+               "name": "Unique",
+               "type": "url",
+               "url": "https://example.com/other"
+            },
+            {
+               "children": [
+                  {
+                     "date_added": "13390000000000000",
+                     "date_last_used": "0",
+                     "guid": "00000000-0000-4000-8000-000000000009",
+                     "id": "9",
+                     "name": "Case-host dupe",
+                     "type": "url",
+                     "url": "https://EXAMPLE.com/page"
+                  }
+               ],
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "date_modified": "13390000000001000",
+               "guid": "00000000-0000-4000-8000-000000000008",
+               "id": "8",
+               "name": "Nested",
+               "type": "folder"
+            }
+         ],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000001",
+         "id": "1",
+         "name": "Bookmarks Bar",
+         "type": "folder"
+      },
+      "other": {
+         "children": [
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000010",
+               "id": "10",
+               "name": "Query order dupe",
+               "type": "url",
+               "url": "https://example.com/search?b=2&a=1"
+            },
+            {
+               "date_added": "13390000000000000",
+               "date_last_used": "0",
+               "guid": "00000000-0000-4000-8000-000000000011",
+               "id": "11",
+               "name": "Query order original",
+               "type": "url",
+               "url": "https://example.com/search?a=1&b=2"
+            }
+         ],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000002",
+         "id": "2",
+         "name": "Other Bookmarks",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [],
+         "date_added": "13390000000000000",
+         "date_last_used": "0",
+         "date_modified": "13390000000001000",
+         "guid": "00000000-0000-4000-8000-000000000003",
+         "id": "3",
+         "name": "Mobile Bookmarks",
+         "type": "folder"
+      }
+   },
+   "version": 1
+}

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct RewriteRulesListView: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject var store: BookmarkStore
+    @ObservedObject var store: RewriteRulesStore
 
     @State private var selectedRuleID: UUID?
     @State private var showingAddRule = false
