@@ -3,10 +3,22 @@ import Testing
 @testable import Maruko
 
 struct BookmarkTreeFormatterTests {
+    /// Loads a fixture's roots as bare `BookmarkNode` trees, for tests that
+    /// don't care which root a node lives under.
     private func roots(fromFixture name: String) throws -> [BookmarkNode] {
-        let file = try ChromiumBookmarksFile.load(data: Fixture.data(name))
-        return ChromiumBookmarksFile.rootKeys.compactMap { key in
-            file.rootNode(key).flatMap(BookmarkNode.init(raw:))
+        try trees(fromFixture: name).map(\.node)
+    }
+
+    /// Loads a fixture's roots keyed by root name ("bookmark_bar", "other",
+    /// "synced"), matching what `ChromeBookmarkTreeAdapter.adapt` produces
+    /// from a live chrome.bookmarks tree.
+    private func trees(fromFixture name: String) throws -> [(rootKey: String, node: BookmarkNode)] {
+        let object = try Fixture.dictionary(name)
+        guard let rootsDict = object["roots"] as? [String: Any] else { return [] }
+        return ["bookmark_bar", "other", "synced"].compactMap { key in
+            (rootsDict[key] as? [String: Any])
+                .flatMap(BookmarkNode.init(raw:))
+                .map { (rootKey: key, node: $0) }
         }
     }
 
@@ -141,64 +153,52 @@ struct BookmarkTreeFormatterTests {
         #expect(aFolder.children.map(\.title) == ["delta", "Delta"])
     }
 
-    @Test func formatProducesLoadableFileWithValidChecksumAndCounts() throws {
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-duplicates"),
-            rules: []
-        )
+    @Test func formatTreeProducesPlanWithCounts() throws {
+        let trees = try self.trees(fromFixture: "chrome-duplicates")
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [])
 
-        #expect(result.plan.duplicates.count == 4)
-        #expect(result.plan.titleChanges.isEmpty)
-        #expect(result.plan.totalBookmarks == 3)
-        #expect(result.plan.totalFolders == 1)
-
-        let written = try ChromiumBookmarksFile.load(data: result.formattedData)
-        #expect(written.computeChecksum() == written.root["checksum"] as? String)
-        #expect(!result.syncMetadataPresent)
+        #expect(plan.duplicates.count == 4)
+        #expect(plan.titleChanges.isEmpty)
+        #expect(plan.totalBookmarks == 3)
+        #expect(plan.totalFolders == 1)
     }
 
-    @Test func formatPreservesGuidsIdsAndUnknownKeys() throws {
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-basic"),
-            rules: []
-        )
-        let written = try JSONSerialization.jsonObject(with: result.formattedData) as! [String: Any]
-
-        #expect(written["sync_metadata"] as? String == "QmFzZTY0U3luY0Jsb2I=")
-        #expect(written["x_top_unknown"] != nil)
-        #expect(result.syncMetadataPresent)
+    @Test func formatTreePreservesGuidsAndUnknownKeys() throws {
+        let trees = try self.trees(fromFixture: "chrome-basic")
+        _ = BookmarkTreeFormatter.formatTree(trees: trees, rules: [])
 
         var sawUnknownNodeKey = false
         var guids: Set<String> = []
-        func walk(_ node: [String: Any]) {
-            if node["x_unknown_key"] as? String == "keep me" { sawUnknownNodeKey = true }
-            if let guid = node["guid"] as? String { guids.insert(guid) }
-            for child in node["children"] as? [[String: Any]] ?? [] { walk(child) }
+        func walk(_ node: BookmarkNode) {
+            if node.raw["x_unknown_key"] as? String == "keep me" { sawUnknownNodeKey = true }
+            if let guid = node.raw["guid"] as? String { guids.insert(guid) }
+            node.children.forEach(walk)
         }
-        for root in (written["roots"] as! [String: Any]).values {
-            walk(root as! [String: Any])
-        }
+        trees.map(\.node).forEach(walk)
+
         #expect(sawUnknownNodeKey)
         #expect(guids.count == 8)
     }
 
     @Test func optionsDisableIndividualSteps() throws {
+        let trees = try self.trees(fromFixture: "chrome-duplicates")
         var options = FormatOptions.default
         options.removeDuplicates = false
         options.moveRecentToTop = false
 
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-duplicates"),
+        let plan = BookmarkTreeFormatter.formatTree(
+            trees: trees,
             rules: [],
             options: options,
             recentVisits: ["https://example.com/other": Date()]
         )
-        #expect(result.plan.duplicates.isEmpty)
-        #expect(result.plan.reorderedFolderCount == 0)
-        #expect(result.plan.totalBookmarks == 7)
+        #expect(plan.duplicates.isEmpty)
+        #expect(plan.reorderedFolderCount == 0)
+        #expect(plan.totalBookmarks == 7)
     }
 
     @Test func rewriteToggleOffIgnoresEnabledRules() throws {
+        let trees = try self.trees(fromFixture: "chrome-basic")
         let rule = RewriteRuleSnapshot(
             id: UUID(),
             name: "GitHub Repo Title",
@@ -214,43 +214,32 @@ struct BookmarkTreeFormatterTests {
         var options = FormatOptions.default
         options.rewriteTitles = false
 
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-basic"),
-            rules: [rule],
-            options: options
-        )
-        #expect(result.plan.titleChanges.isEmpty)
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [rule], options: options)
+        #expect(plan.titleChanges.isEmpty)
     }
 
-    @Test func allOptionsOffLeavesFileContentUnchanged() throws {
+    @Test func allOptionsOffProducesAnEmptyPlan() throws {
+        let trees = try self.trees(fromFixture: "chrome-duplicates")
         let options = FormatOptions(removeDuplicates: false, rewriteTitles: false, moveRecentToTop: false)
-        let originalData = try Fixture.data("chrome-duplicates")
-        let result = try BookmarkTreeFormatter.format(fileData: originalData, rules: [], options: options)
 
-        #expect(result.plan.isEmpty)
-        let written = try JSONSerialization.jsonObject(with: result.formattedData) as? [String: Any]
-        let original = try JSONSerialization.jsonObject(with: originalData) as? [String: Any]
-        #expect(NSDictionary(dictionary: written ?? [:]) == NSDictionary(dictionary: original ?? [:]))
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], options: options)
+        #expect(plan.isEmpty)
     }
 
     @Test func titleOverridesApplyByGuidAndRecordChanges() throws {
         // chrome-basic: the GitHub bookmark has guid ...000000000007.
+        let trees = try self.trees(fromFixture: "chrome-basic")
         let overrides = ["00000000-0000-4000-8000-000000000007": "Maruko on GitHub"]
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-basic"),
-            rules: [],
-            titleOverrides: overrides
-        )
 
-        #expect(result.plan.titleChanges.count == 1)
-        #expect(result.plan.titleChanges.first?.oldTitle == "GitHub")
-        #expect(result.plan.titleChanges.first?.newTitle == "Maruko on GitHub")
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], titleOverrides: overrides)
 
-        let written = try ChromiumBookmarksFile.load(data: result.formattedData)
-        #expect(written.computeChecksum() == written.root["checksum"] as? String)
+        #expect(plan.titleChanges.count == 1)
+        #expect(plan.titleChanges.first?.oldTitle == "GitHub")
+        #expect(plan.titleChanges.first?.newTitle == "Maruko on GitHub")
     }
 
     @Test func overrideWinsOverRegexRewriteInOneChange() throws {
+        let trees = try self.trees(fromFixture: "chrome-basic")
         let regexRule = RewriteRuleSnapshot(
             id: UUID(),
             name: "GitHub Repo Title",
@@ -265,22 +254,19 @@ struct BookmarkTreeFormatterTests {
         )
         let overrides = ["00000000-0000-4000-8000-000000000007": "Final Title"]
 
-        let result = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-basic"),
-            rules: [regexRule],
-            titleOverrides: overrides
-        )
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [regexRule], titleOverrides: overrides)
 
         let change = try #require(
-            result.plan.titleChanges.first { $0.url == "https://github.com/nvictor/maruko" }
+            plan.titleChanges.first { $0.url == "https://github.com/nvictor/maruko" }
         )
         #expect(change.oldTitle == "GitHub")
         #expect(change.newTitle == "Final Title")
     }
 
     @Test func recentBookmarkCandidatesFilterByRecentVisits() throws {
-        let candidates = try BookmarkTreeFormatter.recentBookmarkCandidates(
-            fileData: Fixture.data("chrome-basic"),
+        let trees = try self.trees(fromFixture: "chrome-basic")
+        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
+            trees: trees,
             recentVisits: [
                 "https://example.com/": Date(),
                 "https://github.com/nvictor/maruko": Date(),
@@ -294,10 +280,7 @@ struct BookmarkTreeFormatterTests {
         #expect(candidates.map(\.title).sorted() == ["Docs", "GitHub"])
         #expect(candidates.allSatisfy { !$0.guid.isEmpty })
 
-        let none = try BookmarkTreeFormatter.recentBookmarkCandidates(
-            fileData: Fixture.data("chrome-basic"),
-            recentVisits: [:]
-        )
+        let none = BookmarkTreeFormatter.recentBookmarkCandidates(trees: trees, recentVisits: [:])
         #expect(none.isEmpty)
     }
 
@@ -367,20 +350,16 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.titleChanges(matching: "zzz").isEmpty)
     }
 
-    @Test func formatIsIdempotent() throws {
+    @Test func formatTreeIsIdempotent() throws {
+        let trees = try self.trees(fromFixture: "chrome-unsorted")
         let recentVisits = ["https://dd.example.com/": Date()]
-        let first = try BookmarkTreeFormatter.format(
-            fileData: Fixture.data("chrome-unsorted"),
-            rules: [],
-            recentVisits: recentVisits
-        )
-        #expect(!first.plan.isEmpty)
 
-        let second = try BookmarkTreeFormatter.format(
-            fileData: first.formattedData,
-            rules: [],
-            recentVisits: recentVisits
-        )
-        #expect(second.plan.isEmpty)
+        let first = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
+        #expect(!first.isEmpty)
+
+        // Formatting the already-formatted (mutated in place) trees again
+        // should find nothing left to change.
+        let second = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
+        #expect(second.isEmpty)
     }
 }

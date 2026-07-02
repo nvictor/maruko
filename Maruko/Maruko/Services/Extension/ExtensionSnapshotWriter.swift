@@ -5,7 +5,7 @@ import Foundation
 /// inverse ops is not implemented for the extension path — these snapshots
 /// are the safety net.
 nonisolated struct ExtensionSnapshotWriter {
-    static let maxSnapshots = SafeBookmarkWriter.maxBackupsPerProfile
+    static let maxSnapshots = 10
 
     private let snapshotsRoot: URL
     private let fileManager = FileManager.default

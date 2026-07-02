@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// The format-plan preview list shared by the file path
-/// (`BrowserProfileView`) and the extension path (`ChromeExtensionView`).
+/// The format-plan preview list shown by `ChromeExtensionView`.
 struct FormatPlanListView: View {
     let plan: FormatPlan
     let filterText: String

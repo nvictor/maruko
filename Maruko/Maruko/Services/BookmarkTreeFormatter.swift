@@ -57,63 +57,14 @@ struct FormatPlan: Sendable {
     }
 }
 
-struct FormatResult: Sendable {
-    let plan: FormatPlan
-    /// The full Bookmarks file with the plan applied, ready to write.
-    let formattedData: Data
-    /// The profile syncs bookmarks, so the browser would revert the format
-    /// (see `ChromiumBookmarksFile.hasSyncMetadata`). Applying is blocked.
-    let syncMetadataPresent: Bool
-}
-
 /// Applies Maruko's cleanup — remove duplicate URLs, rewrite titles, move
-/// recently opened bookmarks to the top of their folders — to a Chromium
-/// `Bookmarks` file, returning both a change plan for preview and the
-/// formatted file bytes.
+/// recently opened bookmarks to the top of their folders — to a tree
+/// adapted from chrome.bookmarks, returning the change plan for preview.
+/// The trees are mutated in place with the result.
 nonisolated enum BookmarkTreeFormatter {
-    static func format(
-        fileData: Data,
-        rules: [RewriteRuleSnapshot],
-        options: FormatOptions = .default,
-        recentVisits: [String: Date] = [:],
-        titleOverrides: [String: String] = [:]
-    ) throws -> FormatResult {
-        var file = try ChromiumBookmarksFile.load(data: fileData)
-
-        var trees: [(rootKey: String, node: BookmarkNode)] = []
-        for key in ChromiumBookmarksFile.rootKeys {
-            if let raw = file.rootNode(key), let node = BookmarkNode(raw: raw) {
-                trees.append((key, node))
-            }
-        }
-
-        let plan = formatTree(
-            trees: trees,
-            rules: rules,
-            options: options,
-            recentVisits: recentVisits,
-            titleOverrides: titleOverrides
-        )
-
-        for (key, node) in trees {
-            file.replaceChildren(
-                ofRoot: key,
-                with: node.children.map { $0.dictionaryRepresentation() }
-            )
-        }
-
-        return FormatResult(
-            plan: plan,
-            formattedData: try file.serialized(),
-            syncMetadataPresent: file.hasSyncMetadata
-        )
-    }
-
-    /// The pure core of `format`: mutates the given trees in place and
-    /// returns the change plan. `rootKey` follows the Bookmarks-file names
-    /// ("bookmark_bar", "other", "synced") regardless of where the trees
-    /// came from — the extension path adapts chrome.bookmarks roots to the
-    /// same keys.
+    /// `rootKey` follows the Bookmarks-file naming convention
+    /// ("bookmark_bar", "other", "synced") that `ChromeBookmarkTreeAdapter`
+    /// maps chrome.bookmarks roots onto.
     static func formatTree(
         trees: [(rootKey: String, node: BookmarkNode)],
         rules: [RewriteRuleSnapshot],
@@ -250,27 +201,9 @@ nonisolated enum BookmarkTreeFormatter {
     }
 
     /// Bookmarks eligible for the AI title pass: url nodes whose normalized
-    /// URL appears in `recentVisits`, in depth-first order.
-    static func recentBookmarkCandidates(
-        fileData: Data,
-        recentVisits: [String: Date]
-    ) throws -> [AIRewriteCandidate] {
-        guard !recentVisits.isEmpty else { return [] }
-        let file = try ChromiumBookmarksFile.load(data: fileData)
-
-        var trees: [(rootKey: String, node: BookmarkNode)] = []
-        for key in ChromiumBookmarksFile.rootKeys {
-            if let raw = file.rootNode(key), let node = BookmarkNode(raw: raw) {
-                trees.append((key, node))
-            }
-        }
-        return recentBookmarkCandidates(trees: trees, recentVisits: recentVisits)
-    }
-
-    /// Tree-based variant of `recentBookmarkCandidates` shared by the file
-    /// and extension paths. Candidates are keyed by `raw["guid"]` — the
-    /// extension adapter synthesizes `guid = <chrome node id>` so the AI
-    /// pass works on trees that never touched a Bookmarks file.
+    /// URL appears in `recentVisits`, in depth-first order. Candidates are
+    /// keyed by `raw["guid"]` — the extension adapter synthesizes
+    /// `guid = <chrome node id>` since chrome.bookmarks has no guid field.
     static func recentBookmarkCandidates(
         trees: [(rootKey: String, node: BookmarkNode)],
         recentVisits: [String: Date]

@@ -7,7 +7,6 @@ import SwiftUI
 /// chrome.bookmarks, so sync journals them like ordinary edits.
 struct ChromeExtensionView: View {
     @ObservedObject var extensionStore: ExtensionFormatStore
-    @ObservedObject var formatStore: BrowserFormatStore
 
     @State private var showingApplyConfirmation = false
     @State private var setupExpanded = false
@@ -40,16 +39,16 @@ struct ChromeExtensionView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
-                    Toggle("Remove Duplicates", isOn: $formatStore.formatOptions.removeDuplicates)
-                    Toggle("Rewrite Titles", isOn: $formatStore.formatOptions.rewriteTitles)
-                    Toggle("Move Recently Opened to Top", isOn: $formatStore.formatOptions.moveRecentToTop)
-                    Picker("Recently Opened Means", selection: $formatStore.formatOptions.recencyWindowDays) {
+                    Toggle("Remove Duplicates", isOn: $extensionStore.formatOptions.removeDuplicates)
+                    Toggle("Rewrite Titles", isOn: $extensionStore.formatOptions.rewriteTitles)
+                    Toggle("Move Recently Opened to Top", isOn: $extensionStore.formatOptions.moveRecentToTop)
+                    Picker("Recently Opened Means", selection: $extensionStore.formatOptions.recencyWindowDays) {
                         ForEach(FormatOptions.recencyWindowChoices, id: \.self) { days in
                             Text("Last \(days) days").tag(days)
                         }
                     }
                     .pickerStyle(.menu)
-                    .disabled(!formatStore.formatOptions.moveRecentToTop)
+                    .disabled(!extensionStore.formatOptions.moveRecentToTop)
                 } label: {
                     Label("Format Options", systemImage: "slider.horizontal.3")
                 }
@@ -80,9 +79,6 @@ struct ChromeExtensionView: View {
             extensionStore.start()
             extensionStore.refreshInstallState()
             setupExpanded = !extensionStore.extensionConnected
-        }
-        .onChange(of: formatStore.formatOptions) {
-            extensionStore.reanalyzeIfNeeded()
         }
         .onChange(of: extensionStore.extensionConnected) { _, connected in
             if connected { setupExpanded = false }
@@ -203,7 +199,7 @@ struct ChromeExtensionView: View {
                 FormatPlanListView(
                     plan: plan,
                     filterText: filterText,
-                    recencyWindowDays: formatStore.formatOptions.recencyWindowDays,
+                    recencyWindowDays: extensionStore.formatOptions.recencyWindowDays,
                     lastFormattedAt: nil
                 )
             }

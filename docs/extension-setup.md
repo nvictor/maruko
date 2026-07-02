@@ -1,6 +1,6 @@
 # Formatting through the Chrome extension
 
-Chrome Sync treats outside edits to a synced profile's `Bookmarks` file as corrupt sync state and restores the server's copy — which silently undoes Maruko's formatting. The Maruko Companion extension solves this by applying the changes **through Chrome itself** (the `chrome.bookmarks` API) while Chrome runs, so sync journals every edit like one you made by hand. Use this path when the profile syncs bookmarks, or whenever you don't want to quit Chrome.
+Maruko formats bookmarks through a small companion Chrome extension, the Maruko Companion. The extension applies changes **through Chrome itself** (the `chrome.bookmarks` API) while Chrome runs, so Chrome Sync journals every edit like one you made by hand — no need to quit Chrome, and it works whether or not the profile syncs bookmarks.
 
 Maruko stays in charge: it analyzes the bookmarks the extension sends, shows the usual preview, and only after you confirm does the extension apply anything.
 
@@ -31,7 +31,7 @@ Chrome Sync then propagates the cleanup to the server and your other devices.
 
 - Before analyzing, Maruko saves the **full tree the extension sent** to
   `~/Library/Containers/com.mellowfleet.Maruko/Data/Library/Application Support/Maruko/ExtensionSnapshots/`
-  (last 10 kept). **Undo Last Change does not cover extension formatting yet** — the snapshots are for manual recovery.
+  (last 10 kept). There is no automatic undo yet — the snapshots are for manual recovery.
 - Enterprise-managed bookmarks are never touched.
 - Individual operation failures don't abort the run; they're collected and reported in the summary.
 

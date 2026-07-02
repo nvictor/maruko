@@ -249,8 +249,7 @@ nonisolated final class ExtensionSessionStore: @unchecked Sendable {
 // MARK: - History mapping
 
 /// Converts the extension's history payload into the `[normalized URL →
-/// most recent visit]` map `BookmarkTreeFormatter` expects — the same shape
-/// `BrowserHistoryReader.recentVisits` produces from the History database.
+/// most recent visit]` map `BookmarkTreeFormatter` expects.
 nonisolated enum ExtensionHistoryMapper {
     static func recentVisits(
         history: [ExtensionSessionPayload.HistoryVisit],

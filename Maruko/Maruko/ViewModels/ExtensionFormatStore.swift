@@ -3,11 +3,11 @@ import Combine
 import Foundation
 import OSLog
 
-/// Orchestrates the extension-format flow: run the localhost server the
+/// Orchestrates Maruko's formatting flow: run the localhost server the
 /// Chrome extension talks to, analyze the live tree it sends, preview the
 /// plan, and hand the confirmed op list back for the extension to apply.
-/// Unlike the file path, this works with Chrome running and Sync on —
-/// every edit goes through chrome.bookmarks and is journaled by sync.
+/// This works with Chrome running and Sync on — every edit goes through
+/// chrome.bookmarks and is journaled by sync, so nothing gets reverted.
 @MainActor
 final class ExtensionFormatStore: ObservableObject {
     enum ServerState: Equatable {
@@ -28,20 +28,36 @@ final class ExtensionFormatStore: ObservableObject {
         case failed
     }
 
+    struct AIProgress: Equatable {
+        var processed: Int
+        var total: Int
+    }
+
     @Published private(set) var serverState: ServerState = .stopped
     @Published private(set) var pairingCode: String?
     @Published private(set) var extensionConnected = false
     @Published private(set) var phase: Phase = .waitingForSession
     @Published private(set) var plan: FormatPlan?
-    @Published private(set) var aiProgress: BrowserFormatStore.AIProgress?
+    @Published private(set) var aiProgress: AIProgress?
     @Published private(set) var aiNotice: String?
     @Published private(set) var resultSummary: String?
     @Published private(set) var installState: ExtensionInstaller.ExportState = .notExported
     @Published var statusMessage: String?
     @Published var errorMessage: String?
 
+    /// What Format Bookmarks does. Editing an option re-runs analysis on
+    /// the retained payload if one is pending.
+    @Published var formatOptions: FormatOptions {
+        didSet {
+            guard formatOptions != oldValue else { return }
+            UserDefaults.standard.set(try? JSONEncoder().encode(formatOptions), forKey: Self.formatOptionsKey)
+            reanalyzeIfNeeded()
+        }
+    }
+
     private static let pairingTokenKey = "maruko.extensionPairingToken"
     private static let hasPairedKey = "maruko.extensionHasPaired"
+    private static let formatOptionsKey = "maruko.formatOptions"
 
     private let installer = ExtensionInstaller()
     private let snapshotWriter = ExtensionSnapshotWriter()
@@ -56,21 +72,22 @@ final class ExtensionFormatStore: ObservableObject {
     private var lastPayload: ExtensionSessionPayload?
     private var pendingOps: BookmarkOps?
 
-    /// Wired by ContentView: rules and options stay owned by the existing
-    /// stores so both format paths share one source of truth.
+    /// Wired by ContentView: rules stay owned by RewriteRulesStore so rule
+    /// editing is shared with the rest of the app.
     private var rulesProvider: () throws -> [RewriteRuleSnapshot] = { [] }
-    private var optionsProvider: () -> FormatOptions = { .default }
 
     init() {
         extensionConnected = UserDefaults.standard.bool(forKey: Self.hasPairedKey)
+        if let data = UserDefaults.standard.data(forKey: Self.formatOptionsKey),
+           let options = try? JSONDecoder().decode(FormatOptions.self, from: data) {
+            formatOptions = options
+        } else {
+            formatOptions = .default
+        }
     }
 
-    func configure(
-        rules: @escaping () throws -> [RewriteRuleSnapshot],
-        options: @escaping () -> FormatOptions
-    ) {
+    func configure(rules: @escaping () throws -> [RewriteRuleSnapshot]) {
         rulesProvider = rules
-        optionsProvider = options
     }
 
     // MARK: - Server lifecycle
@@ -172,7 +189,7 @@ final class ExtensionFormatStore: ObservableObject {
             failSession(sessionId, message: error.localizedDescription)
             return
         }
-        let options = optionsProvider()
+        let options = formatOptions
 
         // AI rules run only when the on-device model is usable; otherwise
         // analysis proceeds regex-only with a notice.
@@ -188,7 +205,7 @@ final class ExtensionFormatStore: ObservableObject {
 
         let progressHandler: @Sendable (Int, Int) -> Void = { processed, total in
             Task { @MainActor [weak self] in
-                self?.aiProgress = BrowserFormatStore.AIProgress(processed: processed, total: total)
+                self?.aiProgress = AIProgress(processed: processed, total: total)
             }
         }
 
