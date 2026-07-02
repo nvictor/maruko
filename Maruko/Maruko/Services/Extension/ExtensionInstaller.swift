@@ -78,7 +78,8 @@ nonisolated struct ExtensionInstaller {
             return .notExported
         }
         let bundledVersion = bundledExtensionURL.flatMap(Self.manifestVersion(at:)) ?? exportedVersion
-        if exportedVersion == bundledVersion {
+        if exportedVersion == bundledVersion,
+           bundledExtensionURL.map({ Self.contentsMatch($0, exported) }) == true {
             return .upToDate(exported)
         }
         return .outdated(
@@ -95,5 +96,43 @@ nonisolated struct ExtensionInstaller {
             return nil
         }
         return manifest["version"] as? String
+    }
+
+    static func contentsMatch(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard let lhsFiles = relativeFiles(in: lhs),
+              let rhsFiles = relativeFiles(in: rhs),
+              lhsFiles == rhsFiles else {
+            return false
+        }
+
+        for file in lhsFiles {
+            let lhsURL = lhs.appendingPathComponent(file)
+            let rhsURL = rhs.appendingPathComponent(file)
+            guard let lhsData = try? Data(contentsOf: lhsURL),
+                  let rhsData = try? Data(contentsOf: rhsURL),
+                  lhsData == rhsData else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func relativeFiles(in directory: URL) -> [String]? {
+        guard let enumerator = FileManager.default.enumerator(
+            at: directory,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return nil
+        }
+
+        var files: [String] = []
+        for case let url as URL in enumerator {
+            guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                continue
+            }
+            files.append(String(url.path.dropFirst(directory.path.count + 1)))
+        }
+        return files.sorted()
     }
 }

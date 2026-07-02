@@ -5,6 +5,7 @@
 
 const HISTORY_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const POLL_INTERVAL_MS = 1500;
+const BOOKMARK_API_TIMEOUT_MS = 15000;
 
 const els = {
   pairingSection: document.getElementById("pairing-section"),
@@ -28,6 +29,36 @@ function failureResult(message) {
     counts: { deleted: 0, retitled: 0, moved: 0 },
     errors: [{ op: "apply", id: null, message }],
   };
+}
+
+function chromeCall(label, fn, ...args) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`${label} did not finish after ${BOOKMARK_API_TIMEOUT_MS / 1000} seconds.`));
+    }, BOOKMARK_API_TIMEOUT_MS);
+
+    try {
+      fn(...args, (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          reject(new Error(lastError.message));
+        } else {
+          resolve(result);
+        }
+      });
+    } catch (error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    }
+  });
 }
 
 function setStatus(text, kind) {
@@ -228,8 +259,9 @@ async function applyOps(ops) {
   const progress = () => setStatus(`Applying ${++done} of ${total}…`);
 
   for (const id of ops.deletes) {
+    setStatus(`Deleting bookmark ${done + 1} of ${total}…`);
     try {
-      await chrome.bookmarks.remove(id);
+      await chromeCall("Delete bookmark", chrome.bookmarks.remove, id);
       counts.deleted++;
     } catch (error) {
       errors.push({ op: "delete", id, message: String(error.message || error) });
@@ -238,8 +270,9 @@ async function applyOps(ops) {
   }
 
   for (const { id, title } of ops.retitles) {
+    setStatus(`Renaming bookmark ${done + 1} of ${total}…`);
     try {
-      await chrome.bookmarks.update(id, { title });
+      await chromeCall("Rename bookmark", chrome.bookmarks.update, id, { title });
       counts.retitled++;
     } catch (error) {
       errors.push({ op: "retitle", id, message: String(error.message || error) });
@@ -248,16 +281,20 @@ async function applyOps(ops) {
   }
 
   for (const { folderId, orderedChildIds } of ops.reorders) {
+    setStatus(`Reordering folder ${done + 1} of ${total}…`);
     try {
       // Work against the live tree: ids may have vanished, and moving
       // within the same parent shifts indices (the node is removed before
       // insertion), so re-fetch children before every positional check.
-      const existing = new Set((await chrome.bookmarks.getChildren(folderId)).map((c) => c.id));
+      const existingChildren = await chromeCall("Read folder children", chrome.bookmarks.getChildren, folderId);
+      const existing = new Set(existingChildren.map((c) => c.id));
       const order = orderedChildIds.filter((id) => existing.has(id));
       for (let i = 0; i < order.length; i++) {
-        const children = await chrome.bookmarks.getChildren(folderId);
-        if (children[i] && children[i].id !== order[i]) {
-          await chrome.bookmarks.move(order[i], { parentId: folderId, index: i });
+        const children = await chromeCall("Read folder children", chrome.bookmarks.getChildren, folderId);
+        const currentIndex = children.findIndex((child) => child.id === order[i]);
+        if (currentIndex === -1) continue;
+        if (currentIndex !== i) {
+          await chromeCall("Move bookmark", chrome.bookmarks.move, order[i], { parentId: folderId, index: i });
           counts.moved++;
         }
       }
