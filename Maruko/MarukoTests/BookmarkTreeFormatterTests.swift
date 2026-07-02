@@ -282,11 +282,15 @@ struct BookmarkTreeFormatterTests {
         let candidates = try BookmarkTreeFormatter.recentBookmarkCandidates(
             fileData: Fixture.data("chrome-basic"),
             recentVisits: [
+                "https://example.com/": Date(),
                 "https://github.com/nvictor/maruko": Date(),
+                "https://cafe.example.com/recipes?a=1&b=2": Date(),
                 "https://docs.example.com/guide": Date(),
             ]
         )
 
+        // Direct bookmark bar URL items are skipped. Items in subfolders on
+        // the bar, and items outside the bar, remain eligible.
         #expect(candidates.map(\.title).sorted() == ["Docs", "GitHub"])
         #expect(candidates.allSatisfy { !$0.guid.isEmpty })
 
@@ -295,6 +299,37 @@ struct BookmarkTreeFormatterTests {
             recentVisits: [:]
         )
         #expect(none.isEmpty)
+    }
+
+    @Test func recentBookmarkCandidatesSkipEmptyTitles() {
+        let tree = BookmarkNode(raw: [
+            "type": "folder",
+            "name": "Other Bookmarks",
+            "children": [
+                [
+                    "type": "url",
+                    "name": "",
+                    "guid": "empty-title",
+                    "url": "https://empty.example.com/",
+                ],
+                [
+                    "type": "url",
+                    "name": "Article Notes",
+                    "guid": "article-notes",
+                    "url": "https://article.example.com/",
+                ],
+            ],
+        ])!
+
+        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
+            trees: [(rootKey: "other", node: tree)],
+            recentVisits: [
+                "https://empty.example.com/": Date(),
+                "https://article.example.com/": Date(),
+            ]
+        )
+
+        #expect(candidates.map(\.title) == ["Article Notes"])
     }
 
     @Test func planFilterMatchesTitleAndURLCaseInsensitively() {

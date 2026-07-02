@@ -23,7 +23,7 @@ nonisolated final class AIRewriteCache: @unchecked Sendable {
     /// Bump whenever the generation prompt template changes: proposals made
     /// under an older prompt are stale even though the user's rule text (part
     /// of the key) is unchanged.
-    static let currentPromptVersion = "2"
+    static let currentPromptVersion = "3"
 
     private let fileURL: URL
     private let promptVersion: String
@@ -108,7 +108,19 @@ nonisolated struct AITitleRewriter {
         var overrides: [String: String] = [:]
         var pending: [AIRewriteCandidate] = []
 
+        let eligibility = AIRewriteEligibility(instructions: instructions)
+
         for candidate in candidates {
+            guard eligibility.allows(candidate) else {
+                cache.store(
+                    proposal: candidate.title,
+                    guid: candidate.guid,
+                    title: candidate.title,
+                    instructions: instructions
+                )
+                continue
+            }
+
             if let cached = cache.proposal(guid: candidate.guid, title: candidate.title, instructions: instructions) {
                 if cached != candidate.title {
                     overrides[candidate.guid] = cached
@@ -179,5 +191,63 @@ nonisolated struct AITitleRewriter {
         let trimmed = proposal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.count <= Self.maximumTitleLength else { return nil }
         return trimmed
+    }
+}
+
+nonisolated struct AIRewriteEligibility: Sendable {
+    private let requiredTitlePhrases: [String]
+
+    init(instructions: String) {
+        let lowercased = instructions.lowercased()
+        let quoted = Self.quotedPhrases(in: instructions)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        if lowercased.contains("title"),
+           lowercased.contains("skip"),
+           lowercased.contains("contain") || lowercased.contains("start"),
+           !quoted.isEmpty {
+            requiredTitlePhrases = Array(Set(quoted.map { $0.lowercased() })).sorted()
+        } else {
+            requiredTitlePhrases = []
+        }
+    }
+
+    func allows(_ candidate: AIRewriteCandidate) -> Bool {
+        guard !requiredTitlePhrases.isEmpty else { return true }
+        let title = candidate.title.lowercased()
+        return requiredTitlePhrases.contains { title.contains($0) }
+    }
+
+    private static func quotedPhrases(in text: String) -> [String] {
+        var phrases: [String] = []
+        var current = ""
+        var closingQuote: Character?
+
+        for character in text {
+            if let close = closingQuote {
+                if character == close {
+                    phrases.append(current)
+                    current = ""
+                    closingQuote = nil
+                } else {
+                    current.append(character)
+                }
+                continue
+            }
+
+            switch character {
+            case "\"":
+                closingQuote = "\""
+            case "“":
+                closingQuote = "”"
+            case "'":
+                closingQuote = "'"
+            default:
+                continue
+            }
+        }
+
+        return phrases
     }
 }

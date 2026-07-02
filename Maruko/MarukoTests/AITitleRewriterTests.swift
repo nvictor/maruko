@@ -210,6 +210,38 @@ struct AITitleRewriterTests {
         #expect(await calls.value == 1)
     }
 
+    @Test func articleConditionSkipsNonMatchingTitlesBeforeGeneration() async throws {
+        let calls = Counter()
+        let sentTitles = LockedStringRecorder()
+        let rewriter = AITitleRewriter { batch, _ in
+            await calls.increment()
+            sentTitles.record(batch.map(\.title))
+            return batch.map { "Article: \($0.title)" }
+        }
+
+        let overrides = try await rewriter.rewriteTitles(
+            candidates: [
+                AIRewriteCandidate(
+                    guid: "github",
+                    title: "github nvictor/toraku",
+                    url: "https://github.com/nvictor/toraku"
+                ),
+                AIRewriteCandidate(
+                    guid: "article",
+                    title: "article proper casing",
+                    url: "https://example.com/article"
+                ),
+            ],
+            instructions: "If title does not start with or contains “article” or “Article”, skip. Rewrite using proper casing. Prefix with “Article”.",
+            cache: makeCache()
+        )
+
+        #expect(await calls.value == 1)
+        #expect(sentTitles.values == ["article proper casing"])
+        #expect(overrides["github"] == nil)
+        #expect(overrides["article"] == "Article: article proper casing")
+    }
+
     @Test func emptyInstructionsOrCandidatesShortCircuit() async throws {
         let rewriter = AITitleRewriter { _, _ in
             Issue.record("generator should not be called")
@@ -264,6 +296,23 @@ private final class LockedRecorder: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         storage.append(value)
+    }
+}
+
+private final class LockedStringRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func record(_ values: [String]) {
+        lock.lock()
+        storage.append(contentsOf: values)
+        lock.unlock()
     }
 }
 

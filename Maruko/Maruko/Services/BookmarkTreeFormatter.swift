@@ -278,8 +278,10 @@ nonisolated enum BookmarkTreeFormatter {
         guard !recentVisits.isEmpty else { return [] }
         var candidates: [AIRewriteCandidate] = []
 
-        func walk(_ node: BookmarkNode) {
+        func walk(_ node: BookmarkNode, rootKey: String, depth: Int) {
             if node.kind == .url,
+               !(rootKey == "bookmark_bar" && depth == 1),
+               !node.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let normalized = node.normalizedURL,
                recentVisits[normalized] != nil,
                let guid = node.raw["guid"] as? String {
@@ -288,12 +290,12 @@ nonisolated enum BookmarkTreeFormatter {
                 )
             }
             for child in node.children {
-                walk(child)
+                walk(child, rootKey: rootKey, depth: depth + 1)
             }
         }
 
-        for (_, node) in trees {
-            walk(node)
+        for (rootKey, node) in trees {
+            walk(node, rootKey: rootKey, depth: 0)
         }
         return candidates
     }
