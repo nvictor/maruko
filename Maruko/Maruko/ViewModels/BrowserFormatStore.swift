@@ -22,6 +22,10 @@ final class BrowserFormatStore: ObservableObject {
     @Published private(set) var aiNotice: String?
     @Published private(set) var plan: FormatPlan?
     @Published private(set) var browserIsRunning = false
+    /// The analyzed profile syncs bookmarks; applying is blocked because the
+    /// browser would treat the edit as corrupt sync state and restore the
+    /// server's copy.
+    @Published private(set) var bookmarkSyncEnabled = false
     @Published private(set) var lastUndoRecord: SafeBookmarkWriter.UndoRecord?
     @Published var statusMessage: String?
     @Published var errorMessage: String?
@@ -80,6 +84,7 @@ final class BrowserFormatStore: ObservableObject {
         plan = nil
         pendingWrite = nil
         statusMessage = nil
+        bookmarkSyncEnabled = false
         refreshSelectionState()
     }
 
@@ -184,6 +189,7 @@ final class BrowserFormatStore: ObservableObject {
             let result = try await work.value
 
             plan = result.plan
+            bookmarkSyncEnabled = result.syncMetadataPresent
             pendingWrite = (source: fileData, formatted: result.formattedData, profile: profile)
             logger.info("Analyzed \(profile.displayName, privacy: .public): \(result.plan.totalBookmarks) bookmarks, \(result.plan.duplicates.count) duplicates, \(result.plan.titleChanges.count) title changes")
         } catch is CancellationError {
@@ -211,6 +217,11 @@ final class BrowserFormatStore: ObservableObject {
         guard !BrowserDetector.isRunning(profile.browser) else {
             browserIsRunning = true
             errorMessage = "\(profile.browser.displayName) is running. Quit it before applying changes."
+            return
+        }
+
+        guard !bookmarkSyncEnabled else {
+            errorMessage = "This profile syncs bookmarks, so \(profile.browser.displayName) would restore the old bookmarks from its sync server. Turn off bookmark sync for the profile, then analyze again."
             return
         }
 

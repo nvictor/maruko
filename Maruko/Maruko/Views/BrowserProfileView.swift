@@ -34,6 +34,17 @@ struct BrowserProfileView: View {
                 Divider()
             }
 
+            if store.bookmarkSyncEnabled {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text("This profile syncs bookmarks, so \(profile.browser.displayName) would undo the format by restoring the old bookmarks from its sync server. Turn off bookmark sync for this profile, quit the browser, then Analyze again.")
+                    Spacer()
+                }
+                .padding(10)
+                .background(.orange.opacity(0.15))
+                Divider()
+            }
+
             content
         }
         .navigationTitle("\(profile.browser.displayName) — \(profile.displayName)")
@@ -65,7 +76,7 @@ struct BrowserProfileView: View {
                 Button("Format Bookmarks") {
                     showingApplyConfirmation = true
                 }
-                .disabled(store.plan == nil || store.plan?.isEmpty == true || store.browserIsRunning || store.isWorking)
+                .disabled(store.plan == nil || store.plan?.isEmpty == true || store.browserIsRunning || store.bookmarkSyncEnabled || store.isWorking)
 
                 Button("Undo Last Change") {
                     store.undoLastChange()
@@ -84,7 +95,7 @@ struct BrowserProfileView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = store.plan {
-                Text("Removes \(plan.duplicates.count) duplicates, rewrites \(plan.titleChanges.count) titles, moves recently opened bookmarks up in \(plan.reorderedFolderCount) folders. A backup is created first. If browser sync is enabled, changes propagate on next launch.")
+                Text("Removes \(plan.duplicates.count) duplicates, rewrites \(plan.titleChanges.count) titles, moves recently opened bookmarks up in \(plan.reorderedFolderCount) folders. A backup is created first.")
             }
         }
         .task(id: profile) {

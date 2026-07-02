@@ -20,8 +20,9 @@ Each step can be switched on or off in the Format Options menu (including how fa
 Maruko edits the browser's own `Bookmarks` file, so it is careful:
 
 - Formatting is **blocked while the browser is running** — Chromium browsers rewrite the file from memory, which would silently revert changes.
+- Formatting is **blocked while the profile syncs bookmarks** — Chromium treats outside edits to a synced profile as corrupt sync state and restores the server's copy, undoing the cleanup. Turn off bookmark sync for the profile first (Settings → Sync → Manage what you sync). Note that re-enabling sync later merges the server's old copy back over the cleanup unless you clear the browser's synced data first.
 - A **timestamped backup** is saved before every write (the last 10 per profile are kept).
-- Writes are **atomic**, and node ids, guids, dates, and sync metadata are preserved so browser sync treats the cleanup as ordinary edits.
+- Writes are **atomic**, and node ids, guids, and dates are preserved.
 - **Undo Last Change** restores the previous state at any time; undoing twice reapplies.
 
 ## Setup

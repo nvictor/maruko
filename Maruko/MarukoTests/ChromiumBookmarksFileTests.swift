@@ -44,6 +44,19 @@ struct ChromiumBookmarksFileTests {
         #expect(writtenRoots["synced"] != nil)
     }
 
+    @Test func detectsSyncMetadata() throws {
+        let synced = try ChromiumBookmarksFile.load(data: Fixture.data("chrome-basic"))
+        #expect(synced.hasSyncMetadata)
+
+        let unsynced = try ChromiumBookmarksFile.load(data: Fixture.data("chrome-duplicates"))
+        #expect(!unsynced.hasSyncMetadata)
+
+        // Some browsers leave the key behind as an empty string after
+        // bookmark sync is turned off — that still means "not syncing".
+        let emptyBlob = Data(#"{"roots": {}, "sync_metadata": ""}"#.utf8)
+        #expect(try !ChromiumBookmarksFile.load(data: emptyBlob).hasSyncMetadata)
+    }
+
     @Test func rejectsFilesWithoutRoots() {
         let junk = Data(#"{"version": 1}"#.utf8)
         #expect(throws: ChromiumBookmarksFileError.self) {

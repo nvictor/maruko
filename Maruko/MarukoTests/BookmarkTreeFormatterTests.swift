@@ -154,6 +154,7 @@ struct BookmarkTreeFormatterTests {
 
         let written = try ChromiumBookmarksFile.load(data: result.formattedData)
         #expect(written.computeChecksum() == written.root["checksum"] as? String)
+        #expect(!result.syncMetadataPresent)
     }
 
     @Test func formatPreservesGuidsIdsAndUnknownKeys() throws {
@@ -165,6 +166,7 @@ struct BookmarkTreeFormatterTests {
 
         #expect(written["sync_metadata"] as? String == "QmFzZTY0U3luY0Jsb2I=")
         #expect(written["x_top_unknown"] != nil)
+        #expect(result.syncMetadataPresent)
 
         var sawUnknownNodeKey = false
         var guids: Set<String> = []

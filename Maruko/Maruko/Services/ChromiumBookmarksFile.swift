@@ -47,6 +47,17 @@ nonisolated struct ChromiumBookmarksFile {
         root["roots"] as? [String: Any] ?? [:]
     }
 
+    /// Whether the profile currently syncs bookmarks. Chromium keeps its
+    /// bookmark-sync state in the top-level `sync_metadata` blob and clears
+    /// it when bookmark sync is turned off. Editing the tree out-of-band
+    /// makes that state inconsistent with the model, so on next launch the
+    /// browser discards it and restores the server's copy — a non-empty blob
+    /// means any formatting would be reverted.
+    var hasSyncMetadata: Bool {
+        guard let blob = root["sync_metadata"] as? String else { return false }
+        return !blob.isEmpty
+    }
+
     func rootNode(_ key: String) -> [String: Any]? {
         roots[key] as? [String: Any]
     }

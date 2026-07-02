@@ -56,6 +56,9 @@ struct FormatResult: Sendable {
     let plan: FormatPlan
     /// The full Bookmarks file with the plan applied, ready to write.
     let formattedData: Data
+    /// The profile syncs bookmarks, so the browser would revert the format
+    /// (see `ChromiumBookmarksFile.hasSyncMetadata`). Applying is blocked.
+    let syncMetadataPresent: Bool
 }
 
 /// Applies Maruko's cleanup — remove duplicate URLs, rewrite titles, move
@@ -124,7 +127,11 @@ nonisolated enum BookmarkTreeFormatter {
             // Don't count the three root containers themselves.
             totalFolders: max(0, totalFolders - roots.count)
         )
-        return FormatResult(plan: plan, formattedData: try file.serialized())
+        return FormatResult(
+            plan: plan,
+            formattedData: try file.serialized(),
+            syncMetadataPresent: file.hasSyncMetadata
+        )
     }
 
     /// Removes URL nodes whose normalized URL already appeared earlier in a
