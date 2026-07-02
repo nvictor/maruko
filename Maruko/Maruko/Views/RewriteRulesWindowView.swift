@@ -51,17 +51,22 @@ struct RewriteRulesWindowView: View {
             List(selection: $selectedRuleID) {
                 ForEach(store.rewriteRules, id: \.id) { rule in
                     HStack(spacing: 8) {
-                        Toggle("", isOn: Binding(
-                            get: { rule.isEnabled },
-                            set: { store.setRewriteRuleEnabled(rule, isEnabled: $0) }
-                        ))
-                        .labelsHidden()
-
                         Text(rule.name)
                             .lineLimit(1)
                             .truncationMode(.tail)
+                            .foregroundStyle(rule.isEnabled ? .primary : .secondary)
 
                         Spacer()
+
+                        if !rule.isEnabled {
+                            Text("Off")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.12))
+                                .clipShape(Capsule())
+                                .foregroundStyle(.secondary)
+                        }
 
                         Text(rule.kind == .aiPrompt ? "AI" : "Regex")
                             .font(.caption2.weight(.semibold))
