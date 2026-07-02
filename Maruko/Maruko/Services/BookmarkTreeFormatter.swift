@@ -44,7 +44,8 @@ nonisolated enum BookmarkTreeFormatter {
         fileData: Data,
         rules: [RewriteRuleSnapshot],
         options: FormatOptions = .default,
-        recentVisits: [String: Date] = [:]
+        recentVisits: [String: Date] = [:],
+        titleOverrides: [String: String] = [:]
     ) throws -> FormatResult {
         var file = try ChromiumBookmarksFile.load(data: fileData)
 
@@ -57,7 +58,9 @@ nonisolated enum BookmarkTreeFormatter {
 
         let roots = trees.map(\.node)
         let duplicates = options.removeDuplicates ? removeDuplicates(in: roots) : []
-        let titleChanges = options.rewriteTitles ? rewriteTitles(in: roots, rules: rules) : []
+        let titleChanges = options.rewriteTitles
+            ? rewriteTitles(in: roots, rules: rules, titleOverrides: titleOverrides)
+            : []
 
         var reorderedFolderCount = 0
         if options.moveRecentToTop {
@@ -140,19 +143,30 @@ nonisolated enum BookmarkTreeFormatter {
         return removals
     }
 
-    static func rewriteTitles(in roots: [BookmarkNode], rules: [RewriteRuleSnapshot]) -> [TitleChange] {
-        guard rules.contains(where: \.isEnabled) else { return [] }
+    /// Applies the regex rules to every bookmark, then `titleOverrides`
+    /// (Chromium node guid → new title, produced by the async AI pass). A
+    /// bookmark touched by both records one change from its original title to
+    /// the final one; the override wins.
+    static func rewriteTitles(
+        in roots: [BookmarkNode],
+        rules: [RewriteRuleSnapshot],
+        titleOverrides: [String: String] = [:]
+    ) -> [TitleChange] {
+        guard rules.contains(where: \.isEnabled) || !titleOverrides.isEmpty else { return [] }
         var changes: [TitleChange] = []
 
         func walk(_ folder: BookmarkNode, path: String) {
             for child in folder.children {
                 switch child.kind {
                 case .url:
-                    let rewritten = BookmarkRewriteEngine.rewrite(
+                    var rewritten = BookmarkRewriteEngine.rewrite(
                         title: child.title,
                         url: child.url ?? "",
                         snapshots: rules
                     )
+                    if let guid = child.raw["guid"] as? String, let override = titleOverrides[guid] {
+                        rewritten = override
+                    }
                     if rewritten != child.title {
                         changes.append(
                             TitleChange(
@@ -174,6 +188,38 @@ nonisolated enum BookmarkTreeFormatter {
             walk(root, path: root.title)
         }
         return changes
+    }
+
+    /// Bookmarks eligible for the AI title pass: url nodes whose normalized
+    /// URL appears in `recentVisits`, in depth-first order.
+    static func recentBookmarkCandidates(
+        fileData: Data,
+        recentVisits: [String: Date]
+    ) throws -> [AIRewriteCandidate] {
+        guard !recentVisits.isEmpty else { return [] }
+        let file = try ChromiumBookmarksFile.load(data: fileData)
+        var candidates: [AIRewriteCandidate] = []
+
+        func walk(_ node: BookmarkNode) {
+            if node.kind == .url,
+               let normalized = node.normalizedURL,
+               recentVisits[normalized] != nil,
+               let guid = node.raw["guid"] as? String {
+                candidates.append(
+                    AIRewriteCandidate(guid: guid, title: node.title, url: node.url ?? "")
+                )
+            }
+            for child in node.children {
+                walk(child)
+            }
+        }
+
+        for key in ChromiumBookmarksFile.rootKeys {
+            if let raw = file.rootNode(key), let node = BookmarkNode(raw: raw) {
+                walk(node)
+            }
+        }
+        return candidates
     }
 
     /// Moves bookmarks that appear in `recentVisits` (normalized URL → last

@@ -21,16 +21,40 @@ struct RewriteRuleEditorView: View {
         VStack(alignment: .leading, spacing: 12) {
             Form {
                 TextField("Name", text: $draft.name)
-                TextField("Regex Pattern", text: $draft.pattern)
-                TextField("Replacement", text: $draft.replacementTemplate)
 
-                Picker("Match Field", selection: $draft.matchField) {
-                    Text("Title").tag(RewriteMatchField.title)
-                    Text("URL").tag(RewriteMatchField.url)
-                    Text("Title or URL").tag(RewriteMatchField.titleOrURL)
+                Picker("Kind", selection: $draft.kind) {
+                    ForEach(RewriteRuleKind.allCases, id: \.self) { kind in
+                        Text(kind.displayName).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                switch draft.kind {
+                case .regexMatchReplace:
+                    TextField("Regex Pattern", text: $draft.pattern)
+                    TextField("Replacement", text: $draft.replacementTemplate)
+
+                    Picker("Match Field", selection: $draft.matchField) {
+                        Text("Title").tag(RewriteMatchField.title)
+                        Text("URL").tag(RewriteMatchField.url)
+                        Text("Title or URL").tag(RewriteMatchField.titleOrURL)
+                    }
+
+                    Toggle("Case Sensitive", isOn: $draft.isCaseSensitive)
+
+                case .aiPrompt:
+                    Section {
+                        TextEditor(text: $draft.replacementTemplate)
+                            .font(.body)
+                            .frame(minHeight: 96)
+                    } header: {
+                        Text("Instructions")
+                    } footer: {
+                        Text("Plain-language rules for the on-device model, e.g. \"Remove trailing site names and use sentence case.\" Applies only to recently opened bookmarks.")
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                Toggle("Case Sensitive", isOn: $draft.isCaseSensitive)
                 Toggle("Enabled", isOn: $draft.isEnabled)
             }
             .formStyle(.grouped)

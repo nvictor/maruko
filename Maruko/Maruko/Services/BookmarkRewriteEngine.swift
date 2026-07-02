@@ -35,16 +35,28 @@ enum BookmarkRewriteEngine {
         }
     }
 
+    /// Applies the regex rules only — `.aiPrompt` rules run in a separate
+    /// async pass (`AITitleRewriter`).
     nonisolated static func rewrite(title: String, url: String, snapshots: [RewriteRuleSnapshot]) -> String {
         var rewrittenTitle = title
 
-        for rule in sortedSnapshots(snapshots) where rule.isEnabled {
+        for rule in sortedSnapshots(snapshots) where rule.isEnabled && rule.kind == .regexMatchReplace {
             if let rewritten = apply(rule: rule, currentTitle: rewrittenTitle, url: url) {
                 rewrittenTitle = rewritten
             }
         }
 
         return rewrittenTitle
+    }
+
+    /// The combined natural-language instructions of the enabled AI rules, in
+    /// rule order. Empty when no AI rule is enabled.
+    nonisolated static func combinedAIInstructions(from snapshots: [RewriteRuleSnapshot]) -> String {
+        sortedSnapshots(snapshots)
+            .filter { $0.isEnabled && $0.kind == .aiPrompt }
+            .map { $0.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 
     static func validate(rule: RewriteRule) -> RewriteValidationResult {
@@ -59,20 +71,30 @@ enum BookmarkRewriteEngine {
         if trimmedName.isEmpty {
             return .invalid(message: "Rule name cannot be empty.")
         }
-        if pattern.isEmpty {
-            return .invalid(message: "Pattern cannot be empty.")
-        }
-        if replacement.isEmpty {
-            return .invalid(message: "Replacement cannot be empty.")
-        }
 
-        do {
-            _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)
-        } catch {
-            return .invalid(message: "Invalid regex: \(error.localizedDescription)")
-        }
+        switch snapshot.kind {
+        case .aiPrompt:
+            if replacement.isEmpty {
+                return .invalid(message: "Instructions cannot be empty.")
+            }
+            return .valid
 
-        return .valid
+        case .regexMatchReplace:
+            if pattern.isEmpty {
+                return .invalid(message: "Pattern cannot be empty.")
+            }
+            if replacement.isEmpty {
+                return .invalid(message: "Replacement cannot be empty.")
+            }
+
+            do {
+                _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)
+            } catch {
+                return .invalid(message: "Invalid regex: \(error.localizedDescription)")
+            }
+
+            return .valid
+        }
     }
 
     static func validate(rules: [RewriteRule]) -> [RewriteValidationIssue] {

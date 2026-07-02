@@ -54,6 +54,7 @@ struct BookmarkTreeFormatterTests {
             name: "GitHub Repo Title",
             isEnabled: true,
             order: 0,
+            kind: .regexMatchReplace,
             matchField: .url,
             pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
             replacementTemplate: "github > $1 > $2",
@@ -76,6 +77,7 @@ struct BookmarkTreeFormatterTests {
             name: "Disabled",
             isEnabled: false,
             order: 0,
+            kind: .regexMatchReplace,
             matchField: .title,
             pattern: ".*",
             replacementTemplate: "clobbered",
@@ -200,6 +202,7 @@ struct BookmarkTreeFormatterTests {
             name: "GitHub Repo Title",
             isEnabled: true,
             order: 0,
+            kind: .regexMatchReplace,
             matchField: .url,
             pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
             replacementTemplate: "github > $1 > $2",
@@ -226,6 +229,70 @@ struct BookmarkTreeFormatterTests {
         let written = try JSONSerialization.jsonObject(with: result.formattedData) as? [String: Any]
         let original = try JSONSerialization.jsonObject(with: originalData) as? [String: Any]
         #expect(NSDictionary(dictionary: written ?? [:]) == NSDictionary(dictionary: original ?? [:]))
+    }
+
+    @Test func titleOverridesApplyByGuidAndRecordChanges() throws {
+        // chrome-basic: the GitHub bookmark has guid ...000000000007.
+        let overrides = ["00000000-0000-4000-8000-000000000007": "Maruko on GitHub"]
+        let result = try BookmarkTreeFormatter.format(
+            fileData: Fixture.data("chrome-basic"),
+            rules: [],
+            titleOverrides: overrides
+        )
+
+        #expect(result.plan.titleChanges.count == 1)
+        #expect(result.plan.titleChanges.first?.oldTitle == "GitHub")
+        #expect(result.plan.titleChanges.first?.newTitle == "Maruko on GitHub")
+
+        let written = try ChromiumBookmarksFile.load(data: result.formattedData)
+        #expect(written.computeChecksum() == written.root["checksum"] as? String)
+    }
+
+    @Test func overrideWinsOverRegexRewriteInOneChange() throws {
+        let regexRule = RewriteRuleSnapshot(
+            id: UUID(),
+            name: "GitHub Repo Title",
+            isEnabled: true,
+            order: 0,
+            kind: .regexMatchReplace,
+            matchField: .url,
+            pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
+            replacementTemplate: "github > $1 > $2",
+            isCaseSensitive: false,
+            createdAt: Date()
+        )
+        let overrides = ["00000000-0000-4000-8000-000000000007": "Final Title"]
+
+        let result = try BookmarkTreeFormatter.format(
+            fileData: Fixture.data("chrome-basic"),
+            rules: [regexRule],
+            titleOverrides: overrides
+        )
+
+        let change = try #require(
+            result.plan.titleChanges.first { $0.url == "https://github.com/nvictor/maruko" }
+        )
+        #expect(change.oldTitle == "GitHub")
+        #expect(change.newTitle == "Final Title")
+    }
+
+    @Test func recentBookmarkCandidatesFilterByRecentVisits() throws {
+        let candidates = try BookmarkTreeFormatter.recentBookmarkCandidates(
+            fileData: Fixture.data("chrome-basic"),
+            recentVisits: [
+                "https://github.com/nvictor/maruko": Date(),
+                "https://docs.example.com/guide": Date(),
+            ]
+        )
+
+        #expect(candidates.map(\.title).sorted() == ["Docs", "GitHub"])
+        #expect(candidates.allSatisfy { !$0.guid.isEmpty })
+
+        let none = try BookmarkTreeFormatter.recentBookmarkCandidates(
+            fileData: Fixture.data("chrome-basic"),
+            recentVisits: [:]
+        )
+        #expect(none.isEmpty)
     }
 
     @Test func formatIsIdempotent() throws {

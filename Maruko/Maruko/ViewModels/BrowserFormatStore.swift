@@ -12,7 +12,14 @@ final class BrowserFormatStore: ObservableObject {
     @Published private(set) var hasFolderAccess = false
     @Published var selectedProfile: BrowserProfile?
 
+    struct AIProgress: Equatable {
+        var processed: Int
+        var total: Int
+    }
+
     @Published private(set) var isWorking = false
+    @Published private(set) var aiProgress: AIProgress?
+    @Published private(set) var aiNotice: String?
     @Published private(set) var plan: FormatPlan?
     @Published private(set) var browserIsRunning = false
     @Published private(set) var lastUndoRecord: SafeBookmarkWriter.UndoRecord?
@@ -38,6 +45,7 @@ final class BrowserFormatStore: ObservableObject {
     /// The formatted file produced by the last analyze, plus the bytes it was
     /// computed from so apply can detect the file changing underneath us.
     private var pendingWrite: (source: Data, formatted: Data, profile: BrowserProfile)?
+    private var activeAnalysis: Task<FormatResult, Error>?
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.formatOptionsKey),
@@ -96,8 +104,12 @@ final class BrowserFormatStore: ObservableObject {
         isWorking = true
         errorMessage = nil
         statusMessage = nil
+        aiNotice = nil
+        aiProgress = nil
         defer {
             isWorking = false
+            aiProgress = nil
+            activeAnalysis = nil
             refreshSelectionState()
         }
 
@@ -117,9 +129,27 @@ final class BrowserFormatStore: ObservableObject {
                 .deletingLastPathComponent()
                 .appendingPathComponent("History")
 
-            let result = try await Task.detached(priority: .userInitiated) {
+            // AI rules run only when the on-device model is usable; otherwise
+            // analysis proceeds regex-only with a notice.
+            var aiGenerator: AITitleRewriter.Generator?
+            if options.rewriteTitles, rules.contains(where: { $0.isEnabled && $0.kind == .aiPrompt }) {
+                if let notice = FoundationModelsTitleGenerator.availabilityNotice() {
+                    aiNotice = notice
+                } else {
+                    aiGenerator = FoundationModelsTitleGenerator.generate
+                }
+            }
+            let generator = aiGenerator
+
+            let progressHandler: @Sendable (Int, Int) -> Void = { processed, total in
+                Task { @MainActor [weak self] in
+                    self?.aiProgress = AIProgress(processed: processed, total: total)
+                }
+            }
+
+            let work = Task.detached(priority: .userInitiated) {
                 var recentVisits: [String: Date] = [:]
-                if options.moveRecentToTop {
+                if options.moveRecentToTop || generator != nil {
                     // Best-effort: a missing or unreadable History database
                     // just means nothing is "recent".
                     recentVisits = (try? BrowserHistoryReader.recentVisits(
@@ -127,21 +157,45 @@ final class BrowserFormatStore: ObservableObject {
                         since: options.recencyCutoff
                     )) ?? [:]
                 }
+
+                var titleOverrides: [String: String] = [:]
+                if let generator {
+                    let candidates = try BookmarkTreeFormatter.recentBookmarkCandidates(
+                        fileData: fileData,
+                        recentVisits: recentVisits
+                    )
+                    titleOverrides = try await AITitleRewriter(generate: generator).rewriteTitles(
+                        candidates: candidates,
+                        instructions: BookmarkRewriteEngine.combinedAIInstructions(from: rules),
+                        cache: AIRewriteCache.defaultCache(),
+                        progress: progressHandler
+                    )
+                }
+
                 return try BookmarkTreeFormatter.format(
                     fileData: fileData,
                     rules: rules,
                     options: options,
-                    recentVisits: recentVisits
+                    recentVisits: options.moveRecentToTop ? recentVisits : [:],
+                    titleOverrides: titleOverrides
                 )
-            }.value
+            }
+            activeAnalysis = work
+            let result = try await work.value
 
             plan = result.plan
             pendingWrite = (source: fileData, formatted: result.formattedData, profile: profile)
             logger.info("Analyzed \(profile.displayName, privacy: .public): \(result.plan.totalBookmarks) bookmarks, \(result.plan.duplicates.count) duplicates, \(result.plan.titleChanges.count) title changes")
+        } catch is CancellationError {
+            statusMessage = "Analysis cancelled. Already-processed titles are cached for next time."
         } catch {
             errorMessage = error.localizedDescription
             logger.error("Analyze failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    func cancelAnalysis() {
+        activeAnalysis?.cancel()
     }
 
     func apply() {

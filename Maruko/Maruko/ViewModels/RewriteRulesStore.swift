@@ -129,6 +129,7 @@ final class RewriteRulesStore: ObservableObject {
             name: name,
             isEnabled: draft.isEnabled,
             order: draft.order,
+            kind: draft.kind,
             matchField: draft.matchField,
             pattern: pattern,
             replacementTemplate: template,
@@ -158,6 +159,7 @@ final class RewriteRulesStore: ObservableObject {
         rule.name = name
         rule.isEnabled = draft.isEnabled
         rule.order = draft.order
+        rule.kind = draft.kind
         rule.matchField = draft.matchField
         rule.pattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         rule.replacementTemplate = draft.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)

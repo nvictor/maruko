@@ -14,6 +14,11 @@ struct BrowserProfileView: View {
                 Divider()
             }
 
+            if let aiNotice = store.aiNotice {
+                banner(aiNotice, systemImage: "sparkles", tint: .yellow)
+                Divider()
+            }
+
             if store.browserIsRunning {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle")
@@ -92,7 +97,20 @@ struct BrowserProfileView: View {
     private var content: some View {
         if store.isWorking {
             Spacer()
-            ProgressView("Analyzing bookmarks…")
+            if let progress = store.aiProgress, progress.total > 0 {
+                VStack(spacing: 12) {
+                    ProgressView(value: Double(progress.processed), total: Double(progress.total)) {
+                        Text("Rewriting titles with Apple Intelligence — \(progress.processed) of \(progress.total)…")
+                    }
+                    .frame(maxWidth: 420)
+
+                    Button("Cancel") {
+                        store.cancelAnalysis()
+                    }
+                }
+            } else {
+                ProgressView("Analyzing bookmarks…")
+            }
             Spacer()
         } else if let plan = store.plan {
             planView(plan)
