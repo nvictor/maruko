@@ -6,6 +6,9 @@ struct DuplicateRemoval: Identifiable, Sendable {
     let url: String
     let folderPath: String
     let keptFolderPath: String
+    /// The node's own id (`raw["id"]`) — string in both the Bookmarks file
+    /// and the chrome.bookmarks API, so the extension can target the node.
+    var nodeID: String?
 }
 
 struct TitleChange: Identifiable, Sendable {
@@ -14,6 +17,8 @@ struct TitleChange: Identifiable, Sendable {
     let oldTitle: String
     let newTitle: String
     let folderPath: String
+    /// See `DuplicateRemoval.nodeID`.
+    var nodeID: String?
 }
 
 struct FormatPlan: Sendable {
@@ -82,6 +87,40 @@ nonisolated enum BookmarkTreeFormatter {
             }
         }
 
+        let plan = formatTree(
+            trees: trees,
+            rules: rules,
+            options: options,
+            recentVisits: recentVisits,
+            titleOverrides: titleOverrides
+        )
+
+        for (key, node) in trees {
+            file.replaceChildren(
+                ofRoot: key,
+                with: node.children.map { $0.dictionaryRepresentation() }
+            )
+        }
+
+        return FormatResult(
+            plan: plan,
+            formattedData: try file.serialized(),
+            syncMetadataPresent: file.hasSyncMetadata
+        )
+    }
+
+    /// The pure core of `format`: mutates the given trees in place and
+    /// returns the change plan. `rootKey` follows the Bookmarks-file names
+    /// ("bookmark_bar", "other", "synced") regardless of where the trees
+    /// came from — the extension path adapts chrome.bookmarks roots to the
+    /// same keys.
+    static func formatTree(
+        trees: [(rootKey: String, node: BookmarkNode)],
+        rules: [RewriteRuleSnapshot],
+        options: FormatOptions = .default,
+        recentVisits: [String: Date] = [:],
+        titleOverrides: [String: String] = [:]
+    ) -> FormatPlan {
         let roots = trees.map(\.node)
         let duplicates = options.removeDuplicates ? removeDuplicates(in: roots) : []
         let titleChanges = options.rewriteTitles
@@ -101,13 +140,6 @@ nonisolated enum BookmarkTreeFormatter {
             }
         }
 
-        for (key, node) in trees {
-            file.replaceChildren(
-                ofRoot: key,
-                with: node.children.map { $0.dictionaryRepresentation() }
-            )
-        }
-
         var totalBookmarks = 0
         var totalFolders = 0
         for root in roots {
@@ -119,18 +151,13 @@ nonisolated enum BookmarkTreeFormatter {
             }
         }
 
-        let plan = FormatPlan(
+        return FormatPlan(
             duplicates: duplicates,
             titleChanges: titleChanges,
             reorderedFolderCount: reorderedFolderCount,
             totalBookmarks: totalBookmarks,
-            // Don't count the three root containers themselves.
+            // Don't count the root containers themselves.
             totalFolders: max(0, totalFolders - roots.count)
-        )
-        return FormatResult(
-            plan: plan,
-            formattedData: try file.serialized(),
-            syncMetadataPresent: file.hasSyncMetadata
         )
     }
 
@@ -153,7 +180,8 @@ nonisolated enum BookmarkTreeFormatter {
                             title: child.title,
                             url: child.url ?? "",
                             folderPath: path,
-                            keptFolderPath: keptPath
+                            keptFolderPath: keptPath,
+                            nodeID: child.raw["id"] as? String
                         )
                     )
                     return true
@@ -203,7 +231,8 @@ nonisolated enum BookmarkTreeFormatter {
                                 url: child.url ?? "",
                                 oldTitle: child.title,
                                 newTitle: rewritten,
-                                folderPath: path
+                                folderPath: path,
+                                nodeID: child.raw["id"] as? String
                             )
                         )
                         child.title = rewritten
@@ -228,6 +257,25 @@ nonisolated enum BookmarkTreeFormatter {
     ) throws -> [AIRewriteCandidate] {
         guard !recentVisits.isEmpty else { return [] }
         let file = try ChromiumBookmarksFile.load(data: fileData)
+
+        var trees: [(rootKey: String, node: BookmarkNode)] = []
+        for key in ChromiumBookmarksFile.rootKeys {
+            if let raw = file.rootNode(key), let node = BookmarkNode(raw: raw) {
+                trees.append((key, node))
+            }
+        }
+        return recentBookmarkCandidates(trees: trees, recentVisits: recentVisits)
+    }
+
+    /// Tree-based variant of `recentBookmarkCandidates` shared by the file
+    /// and extension paths. Candidates are keyed by `raw["guid"]` — the
+    /// extension adapter synthesizes `guid = <chrome node id>` so the AI
+    /// pass works on trees that never touched a Bookmarks file.
+    static func recentBookmarkCandidates(
+        trees: [(rootKey: String, node: BookmarkNode)],
+        recentVisits: [String: Date]
+    ) -> [AIRewriteCandidate] {
+        guard !recentVisits.isEmpty else { return [] }
         var candidates: [AIRewriteCandidate] = []
 
         func walk(_ node: BookmarkNode) {
@@ -244,10 +292,8 @@ nonisolated enum BookmarkTreeFormatter {
             }
         }
 
-        for key in ChromiumBookmarksFile.rootKeys {
-            if let raw = file.rootNode(key), let node = BookmarkNode(raw: raw) {
-                walk(node)
-            }
+        for (_, node) in trees {
+            walk(node)
         }
         return candidates
     }

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		5A504500000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 5A504500000000000000002 /* Sparkle */; };
+		5A504500000000000000011 /* extension in Resources */ = {isa = PBXBuildFile; fileRef = 5A504500000000000000010 /* extension */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -23,6 +24,7 @@
 /* Begin PBXFileReference section */
 		571D68BC2F54F52600DD19FB /* Maruko.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Maruko.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		571D68D02F54F52700DD19FB /* MarukoTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MarukoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A504500000000000000010 /* extension */ = {isa = PBXFileReference; lastKnownFileType = folder; name = extension; path = ../extension; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -75,6 +77,7 @@
 			children = (
 				571D68BE2F54F52600DD19FB /* Maruko */,
 				571D68D12F54F52700DD19FB /* MarukoTests */,
+				5A504500000000000000010 /* extension */,
 				571D68BD2F54F52600DD19FB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -184,6 +187,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A504500000000000000011 /* extension in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

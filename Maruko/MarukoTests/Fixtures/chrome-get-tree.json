@@ -1,0 +1,50 @@
+[
+  {
+    "id": "0",
+    "title": "",
+    "children": [
+      {
+        "id": "1",
+        "title": "Bookmarks bar",
+        "folderType": "bookmarks-bar",
+        "children": [
+          { "id": "10", "title": "GitHub", "url": "https://github.com/" },
+          {
+            "id": "11",
+            "title": "Docs",
+            "children": [
+              { "id": "12", "title": "Swift Docs", "url": "https://docs.swift.org/" },
+              { "id": "13", "title": "GitHub again", "url": "https://github.com" },
+              { "id": "14", "title": "MDN", "url": "https://developer.mozilla.org/" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "2",
+        "title": "Other bookmarks",
+        "folderType": "other",
+        "children": [
+          { "id": "20", "title": "Recipes", "url": "https://example.com/recipes" },
+          { "id": "21", "title": "Swift Docs again", "url": "https://docs.swift.org" },
+          { "id": "22", "title": "News", "url": "https://news.ycombinator.com/" }
+        ]
+      },
+      {
+        "id": "3",
+        "title": "Mobile bookmarks",
+        "folderType": "mobile",
+        "children": []
+      },
+      {
+        "id": "4",
+        "title": "Managed bookmarks",
+        "folderType": "managed",
+        "unmodifiable": "managed",
+        "children": [
+          { "id": "40", "title": "Corp Portal", "url": "https://portal.corp.example.com/" }
+        ]
+      }
+    ]
+  }
+]

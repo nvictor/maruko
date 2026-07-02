@@ -6,14 +6,19 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var store = BrowserFormatStore()
     @StateObject private var rulesStore = RewriteRulesStore()
+    @StateObject private var extensionStore = ExtensionFormatStore()
+    @State private var selection: SidebarItem?
 
     var body: some View {
         NavigationSplitView {
-            SidebarView(store: store)
+            SidebarView(store: store, selection: sidebarSelection)
         } detail: {
-            if let profile = store.selectedProfile {
+            switch selection {
+            case .profile(let profile):
                 BrowserProfileView(store: store, rulesStore: rulesStore, profile: profile)
-            } else {
+            case .chromeExtension:
+                ChromeExtensionView(extensionStore: extensionStore, formatStore: store)
+            case nil:
                 ContentUnavailableView(
                     "Pick a browser profile",
                     systemImage: "bookmark",
@@ -28,6 +33,10 @@ struct ContentView: View {
         .onAppear {
             rulesStore.configure(context: modelContext)
             store.refresh()
+            extensionStore.configure(
+                rules: { [weak rulesStore] in try rulesStore?.enabledRuleSnapshots() ?? [] },
+                options: { [weak store] in store?.formatOptions ?? .default }
+            )
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -49,6 +58,27 @@ struct ContentView: View {
         } message: {
             Text(rulesStore.errorMessage ?? "Unknown error")
         }
+        .alert("Error", isPresented: extensionErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(extensionStore.errorMessage ?? "Unknown error")
+        }
+    }
+
+    /// Keeps `store.selectedProfile` in sync so the file-based flow keeps
+    /// working exactly as before.
+    private var sidebarSelection: Binding<SidebarItem?> {
+        Binding(
+            get: { selection },
+            set: { newValue in
+                selection = newValue
+                if case .profile(let profile) = newValue {
+                    store.select(profile)
+                } else {
+                    store.select(nil)
+                }
+            }
+        )
     }
 
     private func errorBinding(for store: BrowserFormatStore) -> Binding<Bool> {
@@ -62,6 +92,13 @@ struct ContentView: View {
         Binding(
             get: { store.errorMessage != nil },
             set: { if !$0 { store.errorMessage = nil } }
+        )
+    }
+
+    private var extensionErrorBinding: Binding<Bool> {
+        Binding(
+            get: { extensionStore.errorMessage != nil },
+            set: { if !$0 { extensionStore.errorMessage = nil } }
         )
     }
 }

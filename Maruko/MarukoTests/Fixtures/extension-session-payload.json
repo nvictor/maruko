@@ -1,0 +1,33 @@
+{
+  "browser": "chrome",
+  "extensionVersion": "1.0.0",
+  "tree": [
+    {
+      "id": "0",
+      "title": "",
+      "children": [
+        {
+          "id": "1",
+          "title": "Bookmarks bar",
+          "folderType": "bookmarks-bar",
+          "children": [
+            { "id": "10", "title": "GitHub", "url": "https://github.com/" },
+            { "id": "13", "title": "GitHub again", "url": "https://github.com" }
+          ]
+        },
+        {
+          "id": "2",
+          "title": "Other bookmarks",
+          "folderType": "other",
+          "children": [
+            { "id": "22", "title": "News", "url": "https://news.ycombinator.com/" }
+          ]
+        }
+      ]
+    }
+  ],
+  "history": [
+    { "url": "https://news.ycombinator.com/", "lastVisitTime": 1751400000000 },
+    { "url": "https://github.com/", "lastVisitTime": 1751300000000 }
+  ]
+}

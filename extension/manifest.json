@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Maruko Companion",
+  "description": "Applies Maruko's bookmark formatting through Chrome so every edit syncs correctly.",
+  "version": "1.0.0",
+  "permissions": ["bookmarks", "history", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Maruko"
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

@@ -15,15 +15,24 @@ Maruko is a macOS app that cleans and formats bookmarks directly inside the brow
 
 Each step can be switched on or off in the Format Options menu (including how far back "recently" reaches), and the title rewrite rules are fully editable.
 
+## Two ways to format
+
+- **Direct file formatting** (the profiles in the sidebar): Maruko edits the profile's `Bookmarks` file. Fast and self-contained, but the browser must be quit and the profile must not sync bookmarks.
+- **Through the Chrome extension** (Chrome Extension in the sidebar): a small companion extension sends Maruko the live bookmark tree, you preview and confirm in the app as usual, and the extension applies the changes via the `chrome.bookmarks` API — while Chrome runs, with Sync on, and the cleanup propagates to your other devices. Maruko installs the extension for you; see [docs/extension-setup.md](docs/extension-setup.md).
+
+Use the extension path for profiles with Chrome Sync; use direct formatting for everything else.
+
 ## Safety
 
-Maruko edits the browser's own `Bookmarks` file, so it is careful:
+When editing the browser's own `Bookmarks` file directly, Maruko is careful:
 
 - Formatting is **blocked while the browser is running** — Chromium browsers rewrite the file from memory, which would silently revert changes.
-- Formatting is **blocked while the profile syncs bookmarks** — Chromium treats outside edits to a synced profile as corrupt sync state and restores the server's copy, undoing the cleanup. Turn off bookmark sync for the profile first (Settings → Sync → Manage what you sync). Note that re-enabling sync later merges the server's old copy back over the cleanup unless you clear the browser's synced data first.
+- Formatting is **blocked while the profile syncs bookmarks** — Chromium treats outside edits to a synced profile as corrupt sync state and restores the server's copy, undoing the cleanup. Use the Chrome extension path instead, or turn off bookmark sync for the profile first (Settings → Sync → Manage what you sync). Note that re-enabling sync later merges the server's old copy back over the cleanup unless you clear the browser's synced data first.
 - A **timestamped backup** is saved before every write (the last 10 per profile are kept).
 - Writes are **atomic**, and node ids, guids, and dates are preserved.
 - **Undo Last Change** restores the previous state at any time; undoing twice reapplies.
+
+Extension formatting saves a snapshot of the tree it received before applying anything (last 10 kept). Undo Last Change does not cover extension formatting yet — the snapshots are for manual recovery.
 
 ## Setup
 
