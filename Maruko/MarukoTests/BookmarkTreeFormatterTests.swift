@@ -295,6 +295,41 @@ struct BookmarkTreeFormatterTests {
         #expect(none.isEmpty)
     }
 
+    @Test func planFilterMatchesTitleAndURLCaseInsensitively() {
+        let plan = FormatPlan(
+            duplicates: [
+                DuplicateRemoval(title: "GitHub", url: "https://github.com/nvictor/maruko", folderPath: "Bar", keptFolderPath: "Bar"),
+                DuplicateRemoval(title: "", url: "https://docs.example.com/guide", folderPath: "Bar", keptFolderPath: "Bar"),
+            ],
+            titleChanges: [
+                TitleChange(url: "https://github.com/nvictor/maruko", oldTitle: "GitHub", newTitle: "github > nvictor > maruko", folderPath: "Bar"),
+                TitleChange(url: "https://news.example.com/", oldTitle: "Old News", newTitle: "News", folderPath: "Bar"),
+            ],
+            reorderedFolderCount: 0,
+            totalBookmarks: 4,
+            totalFolders: 1
+        )
+
+        // Empty and whitespace-only queries match everything.
+        #expect(plan.duplicates(matching: "").count == 2)
+        #expect(plan.titleChanges(matching: "  ").count == 2)
+
+        // Case-insensitive title match.
+        #expect(plan.duplicates(matching: "GITHUB").map(\.title) == ["GitHub"])
+
+        // URL match, including entries with empty titles.
+        #expect(plan.duplicates(matching: "docs.example").map(\.url) == ["https://docs.example.com/guide"])
+
+        // Title changes match on old title, new title, and URL.
+        #expect(plan.titleChanges(matching: "old news").map(\.newTitle) == ["News"])
+        #expect(plan.titleChanges(matching: "nvictor > maruko").count == 1)
+        #expect(plan.titleChanges(matching: "news.example").map(\.newTitle) == ["News"])
+
+        // No match returns empty.
+        #expect(plan.duplicates(matching: "zzz").isEmpty)
+        #expect(plan.titleChanges(matching: "zzz").isEmpty)
+    }
+
     @Test func formatIsIdempotent() throws {
         let recentVisits = ["https://dd.example.com/": Date()]
         let first = try BookmarkTreeFormatter.format(

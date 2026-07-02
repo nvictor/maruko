@@ -6,6 +6,7 @@ struct BrowserProfileView: View {
     let profile: BrowserProfile
 
     @State private var showingApplyConfirmation = false
+    @State private var filterText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +37,7 @@ struct BrowserProfileView: View {
             content
         }
         .navigationTitle("\(profile.browser.displayName) — \(profile.displayName)")
+        .searchable(text: $filterText, placement: .toolbar, prompt: "Filter by title or URL")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
@@ -126,7 +128,11 @@ struct BrowserProfileView: View {
     }
 
     private func planView(_ plan: FormatPlan) -> some View {
-        List {
+        let duplicates = plan.duplicates(matching: filterText)
+        let titleChanges = plan.titleChanges(matching: filterText)
+        let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return List {
             Section("Overview") {
                 LabeledContent("Bookmarks", value: "\(plan.totalBookmarks)")
                 LabeledContent("Folders", value: "\(plan.totalFolders)")
@@ -139,9 +145,13 @@ struct BrowserProfileView: View {
                 }
             }
 
-            if !plan.duplicates.isEmpty {
-                Section("Duplicates to remove (\(plan.duplicates.count))") {
-                    ForEach(plan.duplicates) { duplicate in
+            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, !plan.isEmpty {
+                ContentUnavailableView.search(text: filterText)
+            }
+
+            if !duplicates.isEmpty {
+                Section(sectionTitle("Duplicates to remove", shown: duplicates.count, total: plan.duplicates.count)) {
+                    ForEach(duplicates) { duplicate in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(duplicate.title.isEmpty ? duplicate.url : duplicate.title)
                                 .lineLimit(1)
@@ -154,9 +164,9 @@ struct BrowserProfileView: View {
                 }
             }
 
-            if !plan.titleChanges.isEmpty {
-                Section("Titles to rewrite (\(plan.titleChanges.count))") {
-                    ForEach(plan.titleChanges) { change in
+            if !titleChanges.isEmpty {
+                Section(sectionTitle("Titles to rewrite", shown: titleChanges.count, total: plan.titleChanges.count)) {
+                    ForEach(titleChanges) { change in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(change.oldTitle)
                                 .strikethrough()
@@ -180,6 +190,10 @@ struct BrowserProfileView: View {
         }
     }
 
+    private func sectionTitle(_ label: String, shown: Int, total: Int) -> String {
+        shown == total ? "\(label) (\(total))" : "\(label) (\(shown) of \(total))"
+    }
+
     private func banner(_ text: String, systemImage: String, tint: Color) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
@@ -197,6 +211,7 @@ struct BrowserProfileView: View {
     }
 
     private func analyze() async {
+        filterText = ""
         do {
             let snapshots = try rulesStore.enabledRuleSnapshots()
             await store.analyze(rules: snapshots)

@@ -27,6 +27,29 @@ struct FormatPlan: Sendable {
     var isEmpty: Bool {
         duplicates.isEmpty && titleChanges.isEmpty && reorderedFolderCount == 0
     }
+
+    /// Duplicates whose title or URL contains `query` (case-insensitive).
+    /// An empty or whitespace-only query matches everything.
+    func duplicates(matching query: String) -> [DuplicateRemoval] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return duplicates }
+        return duplicates.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.url.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// Title changes whose old title, new title, or URL contains `query`
+    /// (case-insensitive). An empty or whitespace-only query matches everything.
+    func titleChanges(matching query: String) -> [TitleChange] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return titleChanges }
+        return titleChanges.filter {
+            $0.oldTitle.localizedCaseInsensitiveContains(query)
+                || $0.newTitle.localizedCaseInsensitiveContains(query)
+                || $0.url.localizedCaseInsensitiveContains(query)
+        }
+    }
 }
 
 struct FormatResult: Sendable {
