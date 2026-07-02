@@ -281,20 +281,30 @@ async function applyOps(ops) {
   }
 
   for (const { folderId, orderedChildIds } of ops.reorders) {
-    setStatus(`Reordering folder ${done + 1} of ${total}…`);
+    const folderNumber = done + 1;
+    setStatus(`Reordering folder ${folderNumber} of ${total}…`);
     try {
       // Work against the live tree: ids may have vanished, and moving
-      // within the same parent shifts indices (the node is removed before
-      // insertion), so re-fetch children before every positional check.
+      // within the same parent shifts indices, so update a local order model
+      // after every move instead of re-reading the whole folder repeatedly.
       const existingChildren = await chromeCall("Read folder children", chrome.bookmarks.getChildren, folderId);
       const existing = new Set(existingChildren.map((c) => c.id));
-      const order = orderedChildIds.filter((id) => existing.has(id));
-      for (let i = 0; i < order.length; i++) {
-        const children = await chromeCall("Read folder children", chrome.bookmarks.getChildren, folderId);
-        const currentIndex = children.findIndex((child) => child.id === order[i]);
+      const desired = orderedChildIds.filter((id) => existing.has(id));
+      const desiredSet = new Set(desired);
+      const order = [
+        ...desired,
+        ...existingChildren.map((child) => child.id).filter((id) => !desiredSet.has(id)),
+      ];
+      for (let i = 0; i < desired.length; i++) {
+        if (i % 10 === 0 || i === desired.length - 1) {
+          setStatus(`Reordering folder ${folderNumber} of ${total}: ${i + 1} of ${desired.length}…`);
+        }
+        const currentIndex = order.indexOf(desired[i]);
         if (currentIndex === -1) continue;
         if (currentIndex !== i) {
-          await chromeCall("Move bookmark", chrome.bookmarks.move, order[i], { parentId: folderId, index: i });
+          const [moved] = order.splice(currentIndex, 1);
+          order.splice(i, 0, moved);
+          await chromeCall("Move bookmark", chrome.bookmarks.move, moved, { parentId: folderId, index: i });
           counts.moved++;
         }
       }
