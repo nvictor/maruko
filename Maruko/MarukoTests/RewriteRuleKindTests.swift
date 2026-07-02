@@ -65,6 +65,15 @@ struct RewriteRuleKindTests {
         #expect(combined == "First rule.\nSecond rule.")
     }
 
+    @Test @MainActor func defaultArticleRuleUsesSafeAIPrompt() {
+        let rules = BookmarkRewriteEngine.makeDefaultRules()
+        let article = rules.first { $0.name == "Article Title Rewrite" }
+
+        #expect(article?.kind == .aiPrompt)
+        #expect(article?.pattern.isEmpty == true)
+        #expect(article?.replacementTemplate == BookmarkRewriteEngine.defaultArticleTitleRewritePrompt)
+    }
+
     @Test @MainActor func unknownKindRawFallsBackToRegex() {
         let rule = RewriteRule(
             name: "Legacy",

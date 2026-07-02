@@ -14,6 +14,17 @@ enum RewriteValidationResult {
 enum BookmarkRewriteEngine {
     nonisolated(unsafe) private static var regexCache: [String: NSRegularExpression] = [:]
     nonisolated private static let regexCacheLock = NSLock()
+    nonisolated static let defaultArticleTitleRewritePrompt = """
+        Only rewrite titles that clearly look like article or blog post titles.
+
+        Skip if the title is only a domain, site name, product name, app name, repo name, profile name, documentation section, homepage, or navigation label.
+
+        Skip if the title has fewer than 4 words, unless it contains a clear article headline phrase.
+
+        For matching titles, rewrite using proper title casing. Prefix exactly with “Article: ”.
+
+        Do not rewrite based on the URL alone. The title itself must look like an article headline.
+        """
 
     static func sortedRules(_ rules: [RewriteRule]) -> [RewriteRule] {
         rules.sorted {
@@ -120,12 +131,13 @@ enum BookmarkRewriteEngine {
                 isCaseSensitive: false
             ),
             RewriteRule(
-                name: "Article Title Prefix",
+                name: "Article Title Rewrite",
                 isEnabled: true,
                 order: 1,
+                kind: .aiPrompt,
                 matchField: .title,
-                pattern: #"(?i)^article\s+(.+)$"#,
-                replacementTemplate: "Article ${titlecase:1}",
+                pattern: "",
+                replacementTemplate: Self.defaultArticleTitleRewritePrompt,
                 isCaseSensitive: false
             )
         ]

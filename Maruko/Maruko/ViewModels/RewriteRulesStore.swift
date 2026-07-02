@@ -71,18 +71,20 @@ final class RewriteRulesStore: ObservableObject {
             }
 
             if legacyKind == "containsTextTitleCaseWithPrefix" {
-                rule.kindRaw = "regexMatchReplace"
-                rule.matchField = .title
-                rule.pattern = #"(?i)^article\s+(.+)$"#
-                rule.replacementTemplate = "Article ${titlecase:1}"
-                rule.isCaseSensitive = false
+                migrateToDefaultArticleRewrite(rule)
                 rule.updatedAt = Date()
                 changed = true
                 continue
             }
 
             if rule.name == "Article Title Prefix" && rule.replacementTemplate == "Article $1" {
-                rule.replacementTemplate = "Article ${titlecase:1}"
+                migrateToDefaultArticleRewrite(rule)
+                rule.updatedAt = Date()
+                changed = true
+            }
+
+            if rule.name == "Article Title Prefix" && rule.replacementTemplate == "Article ${titlecase:1}" {
+                migrateToDefaultArticleRewrite(rule)
                 rule.updatedAt = Date()
                 changed = true
             }
@@ -229,5 +231,14 @@ final class RewriteRulesStore: ObservableObject {
     private func normalizeRuleOrder() throws {
         let ordered = BookmarkRewriteEngine.sortedRules(rewriteRules)
         try persistRuleOrder(ordered)
+    }
+
+    private func migrateToDefaultArticleRewrite(_ rule: RewriteRule) {
+        rule.name = "Article Title Rewrite"
+        rule.kindRaw = RewriteRuleKind.aiPrompt.rawValue
+        rule.matchField = .title
+        rule.pattern = ""
+        rule.replacementTemplate = BookmarkRewriteEngine.defaultArticleTitleRewritePrompt
+        rule.isCaseSensitive = false
     }
 }
