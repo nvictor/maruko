@@ -210,7 +210,7 @@ async function poll(sessionId) {
       stopPolling();
       await chrome.storage.local.remove("sessionId");
       els.send.disabled = false;
-      setStatus("Done — bookmarks formatted.", "ok");
+      setStatus("Done. Bookmarks formatted.", "ok");
       break;
     case "failed":
     case "cancelled":
@@ -231,7 +231,7 @@ async function applyAndReport(sessionId, ops) {
     await api("POST", `/session/${sessionId}/result`, result);
     await chrome.storage.local.remove("sessionId");
     if (result.ok) {
-      setStatus("Done — bookmarks formatted.", "ok");
+      setStatus("Done. Bookmarks formatted.", "ok");
     } else {
       setStatus(`Finished with ${result.errors.length} errors: ${result.errors[0].message}`, "error");
     }

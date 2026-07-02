@@ -145,7 +145,7 @@ final class ExtensionFormatStore: ObservableObject {
     private static func summary(for result: ExtensionApplyResult) -> String {
         var text = "Removed \(result.counts.deleted) duplicates, rewrote \(result.counts.retitled) titles, moved \(result.counts.moved) bookmarks."
         if !result.errors.isEmpty {
-            text += " \(result.errors.count) operations failed — see the extension popup for details."
+            text += " \(result.errors.count) operations failed. See the extension popup for details."
         }
         return text
     }
@@ -299,7 +299,7 @@ final class ExtensionFormatStore: ObservableObject {
             do {
                 let url = try installer.exportBundledExtension()
                 installState = .upToDate(url)
-                statusMessage = "Extension updated — click Reload (⟳) on the chrome://extensions page."
+                statusMessage = "Extension updated. Click Reload (⟳) on the chrome://extensions page."
             } catch {
                 errorMessage = error.localizedDescription
             }

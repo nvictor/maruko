@@ -47,7 +47,7 @@ struct BrowserProfileView: View {
 
             content
         }
-        .navigationTitle("\(profile.browser.displayName) — \(profile.displayName)")
+        .navigationTitle("\(profile.browser.displayName). \(profile.displayName)")
         .searchable(text: $filterText, placement: .toolbar, prompt: "Filter by title or URL")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -113,7 +113,7 @@ struct BrowserProfileView: View {
             if let progress = store.aiProgress, progress.total > 0 {
                 VStack(spacing: 12) {
                     ProgressView(value: Double(progress.processed), total: Double(progress.total)) {
-                        Text("Rewriting titles with Apple Intelligence — \(progress.processed) of \(progress.total)…")
+                        Text("Rewriting titles with Apple Intelligence. \(progress.processed) of \(progress.total)…")
                     }
                     .frame(maxWidth: 420)
 

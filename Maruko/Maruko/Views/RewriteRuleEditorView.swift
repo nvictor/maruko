@@ -91,7 +91,7 @@ struct RewriteRuleFormView: View {
                 snapshots: [draft.previewSnapshot()]
             )
             if rewritten == sampleTitle {
-                Text("No match — sample stays “\(sampleTitle)”")
+                Text("No match. Sample stays “\(sampleTitle)”")
                     .foregroundStyle(.secondary)
             } else {
                 Text(rewritten)

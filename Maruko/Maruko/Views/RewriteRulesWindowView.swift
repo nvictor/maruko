@@ -102,7 +102,7 @@ struct RewriteRulesWindowView: View {
                     Image(systemName: "chevron.up")
                 }
                 .disabled(!canMove(direction: -1))
-                .help("Move up — earlier rules run first")
+                .help("Move up. Earlier rules run first")
 
                 Button {
                     if let selectedRule { store.moveRewriteRule(selectedRule, direction: 1) }

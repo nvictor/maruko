@@ -21,7 +21,7 @@ struct FormatPlanListView: View {
                     LabeledContent("Last formatted", value: lastFormattedAt.formatted(date: .abbreviated, time: .shortened))
                 }
                 if plan.isEmpty {
-                    Label("Already clean — nothing to change.", systemImage: "checkmark.seal")
+                    Label("Already clean. Nothing to change.", systemImage: "checkmark.seal")
                         .foregroundStyle(.green)
                 }
             }
@@ -36,7 +36,7 @@ struct FormatPlanListView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(duplicate.title.isEmpty ? duplicate.url : duplicate.title)
                                 .lineLimit(1)
-                            Text("\(duplicate.folderPath) — kept in \(duplicate.keptFolderPath)")
+                            Text("\(duplicate.folderPath). Kept in \(duplicate.keptFolderPath)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)

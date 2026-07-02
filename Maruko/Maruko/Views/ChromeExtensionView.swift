@@ -186,7 +186,7 @@ struct ChromeExtensionView: View {
             if let progress = extensionStore.aiProgress, progress.total > 0 {
                 VStack(spacing: 12) {
                     ProgressView(value: Double(progress.processed), total: Double(progress.total)) {
-                        Text("Rewriting titles with Apple Intelligence — \(progress.processed) of \(progress.total)…")
+                        Text("Rewriting titles with Apple Intelligence. \(progress.processed) of \(progress.total)…")
                     }
                     .frame(maxWidth: 420)
 
