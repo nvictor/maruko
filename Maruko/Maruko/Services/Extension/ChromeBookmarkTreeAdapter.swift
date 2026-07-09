@@ -1,6 +1,6 @@
 import Foundation
 
-/// One node of `chrome.bookmarks.getTree()` output. Decoded leniently —
+/// One node of `chrome.bookmarks.getTree()` output. Decoded leniently.
 /// the API returns more keys (dateAdded, index, syncing, …) that we don't
 /// need and Codable ignores.
 nonisolated struct ChromeBookmarkNode: Codable, Sendable {
@@ -41,7 +41,7 @@ nonisolated enum ChromeBookmarkTreeAdapter {
     /// the Bookmarks-file root keys by `folderType` where available, falling
     /// back to Chromium's stable ids ("1" bar, "2" other, "3" mobile) for
     /// forks that don't send it. Managed and unrecognized containers are
-    /// skipped — the formatter must never touch policy-provisioned nodes.
+    /// skipped. The formatter must never touch policy-provisioned nodes.
     static func adapt(tree: [ChromeBookmarkNode]) throws -> [RootedTree] {
         var trees: [RootedTree] = []
 

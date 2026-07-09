@@ -40,7 +40,7 @@ nonisolated final class BookmarkNode {
     }
 
     /// The original dictionary with only the mutable parts (title, children)
-    /// overwritten — unknown keys pass through untouched.
+    /// overwritten. Unknown keys pass through untouched.
     func dictionaryRepresentation() -> [String: Any] {
         var output = raw
         output["name"] = title

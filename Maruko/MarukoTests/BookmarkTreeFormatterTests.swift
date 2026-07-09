@@ -495,7 +495,7 @@ struct BookmarkTreeFormatterTests {
         ]))!
         let visits = [
             "https://a.example.com/": now.addingTimeInterval(-3600),
-            // More recent than "A" — should be pulled in ahead of it.
+            // More recent than "A". Should be pulled in ahead of it.
             "https://b.example.com/": now,
         ]
 
@@ -514,7 +514,7 @@ struct BookmarkTreeFormatterTests {
         let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: []))!
         let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
         // A bookmark filed into a named subfolder of Other Bookmarks, not a
-        // direct child of it — must never be swept into Recent even though
+        // direct child of it. Must never be swept into Recent even though
         // it was visited recently.
         let filed = BookmarkNode(raw: rawURL(id: "f1", name: "Filed", url: "https://filed.example.com/"))!
         other.children = [BookmarkNode(raw: rawFolder(id: "99", name: "Work", children: []))!]
@@ -593,7 +593,7 @@ struct BookmarkTreeFormatterTests {
 
     @Test func formatTreeTreatsRecentFolderAsOrdinaryFolder() throws {
         // Recent-folder curation (pull-in + cap-at-20) is a separate,
-        // user-triggered action (`curateRecentFolderPlan`) — the automatic
+        // user-triggered action (`curateRecentFolderPlan`). The automatic
         // Format Bookmarks pass never special-cases a folder named "Recent"
         // anymore. It gets the same top-of-folder treatment as any other
         // folder, no cap, no pulling in from Other Bookmarks.
@@ -616,13 +616,13 @@ struct BookmarkTreeFormatterTests {
 
         let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: visits)
 
-        // `formatTree` never populates these — only `curateRecentFolderPlan` does.
+        // `formatTree` never populates these. Only `curateRecentFolderPlan` does.
         #expect(plan.recentFolderAdditions.isEmpty)
         #expect(plan.recentFolderEvictions.isEmpty)
         #expect(plan.reorderedFolderCount == 1)
 
         let recent = bar.children.first { $0.title == "Recent" }!
-        // All 22 items kept — no cap — sorted most-recent-first like any
+        // All 22 items kept. No cap. Sorted most-recent-first like any
         // ordinary folder under the legacy top-of-folder pass.
         #expect(recent.children.count == 22)
         #expect(recent.children.first?.title == "Item 22")

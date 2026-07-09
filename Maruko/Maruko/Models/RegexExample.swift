@@ -17,7 +17,7 @@ nonisolated struct RegexExample: Identifiable, Sendable {
     static let all: [RegexExample] = [
         RegexExample(
             name: "Strip trailing site name",
-            pattern: #"^(.*?)\s*[|·–—-]\s*[^|·–—-]+$"#,
+            pattern: #"^(.*?)\s*[|·–\x{2014}-]\s*[^|·–\x{2014}-]+$"#,
             replacement: "$1",
             matchField: .title,
             sampleTitle: "How to Cook Rice | Bon Appétit",

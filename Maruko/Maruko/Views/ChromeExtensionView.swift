@@ -3,7 +3,7 @@ import SwiftUI
 /// Detail view for the extension-format flow: guides the one-time install,
 /// shows the pairing code, previews the plan a connected extension sends,
 /// and hands the confirmed ops back for it to apply. Works with Chrome
-/// running and Sync on — the extension applies every edit through
+/// running and Sync on. The extension applies every edit through
 /// chrome.bookmarks, so sync journals them like ordinary edits.
 struct ChromeExtensionView: View {
     @ObservedObject var extensionStore: ExtensionFormatStore
@@ -59,7 +59,7 @@ struct ChromeExtensionView: View {
                     extensionStore.sortRecentFolder()
                 }
                 .disabled(extensionStore.phase != .awaitingConfirmation)
-                .help("Sorts the \u{201C}Recent\u{201D} folder by last opened, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most recent — independent of Format Bookmarks.")
+                .help("Sorts the \u{201C}Recent\u{201D} folder by last opened, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most recent. Independent of Format Bookmarks.")
 
                 Button("Apply via Extension") {
                     showingApplyConfirmation = true

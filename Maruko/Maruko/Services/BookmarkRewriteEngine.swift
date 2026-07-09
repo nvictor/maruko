@@ -27,16 +27,16 @@ enum BookmarkRewriteEngine {
         """
 
     nonisolated static let defaultWikipediaTitleRewritePrompt = """
-        Only apply this rule to Wikipedia articles — pages on wikipedia.org or
+        Only apply this rule to Wikipedia articles. Pages on wikipedia.org or
         any subdomain of it, such as en.wikipedia.org. You can tell from the
         URL shown next to the title. Skip every bookmark whose URL is not on
-        a Wikipedia domain — that covers everything else, including ordinary
+        a Wikipedia domain. That covers everything else, including ordinary
         articles or blog posts, which a separate rule already handles.
 
         For a matching bookmark, rewrite the title using proper title casing,
         drop any trailing hyphen-Wikipedia suffix added by the original page
-        title — for example, turn Albert Einstein - Wikipedia into Albert
-        Einstein — and then add the prefix Wikipedia, followed by a colon and
+        title. For example, turn Albert Einstein - Wikipedia into Albert
+        Einstein. And then add the prefix Wikipedia, followed by a colon and
         one space, before the cleaned title.
 
         Do not rewrite based on the title alone if the URL is not a Wikipedia
@@ -63,7 +63,7 @@ enum BookmarkRewriteEngine {
         }
     }
 
-    /// Applies the regex rules only — `.aiPrompt` rules run in a separate
+    /// Applies the regex rules only. `.aiPrompt` rules run in a separate
     /// async pass (`AITitleRewriter`).
     nonisolated static func rewrite(title: String, url: String, snapshots: [RewriteRuleSnapshot]) -> String {
         var rewrittenTitle = title

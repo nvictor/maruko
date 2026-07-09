@@ -162,7 +162,7 @@ nonisolated struct AITitleRewriter {
 
             for (candidate, proposal) in zip(batch, proposals) {
                 // No or unusable proposal means the rules don't apply (the
-                // generator returns entries only for changed titles) — cache
+                // generator returns entries only for changed titles). Cache
                 // the old title so the item never goes back to the model.
                 let accepted = Self.sanitize(proposal) ?? candidate.title
                 cache.store(

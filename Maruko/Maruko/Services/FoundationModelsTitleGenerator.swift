@@ -55,7 +55,7 @@ nonisolated enum FoundationModelsTitleGenerator {
             """)
 
         let prompt = batch.enumerated()
-            .map { index, candidate in "\(index). \(candidate.title) — \(candidate.url.prefix(120))" }
+            .map { index, candidate in "\(index). \(candidate.title). URL: \(candidate.url.prefix(120))" }
             .joined(separator: "\n")
 
         do {
@@ -64,8 +64,8 @@ nonisolated enum FoundationModelsTitleGenerator {
             for item in response.content where proposals.indices.contains(item.index) {
                 // Structural check on the model's own justification: the
                 // quoted evidence must actually appear in the original title
-                // (or URL, for URL-based rules). A fabricated match — the
-                // usual failure mode for conditional rules — can't pass this.
+                // (or URL, for URL-based rules). A fabricated match. The
+                // usual failure mode for conditional rules. Can't pass this.
                 let evidence = item.evidence.trimmingCharacters(in: .whitespacesAndNewlines)
                 let candidate = batch[item.index]
                 guard !evidence.isEmpty,

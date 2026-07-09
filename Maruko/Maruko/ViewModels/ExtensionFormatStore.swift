@@ -10,7 +10,7 @@ private enum SortRecentFolderError: Error {
 /// Orchestrates Maruko's formatting flow: run the localhost server the
 /// Chrome extension talks to, analyze the live tree it sends, preview the
 /// plan, and hand the confirmed op list back for the extension to apply.
-/// This works with Chrome running and Sync on — every edit goes through
+/// This works with Chrome running and Sync on. Every edit goes through
 /// chrome.bookmarks and is journaled by sync, so nothing gets reverted.
 @MainActor
 final class ExtensionFormatStore: ObservableObject {
@@ -289,7 +289,7 @@ final class ExtensionFormatStore: ObservableObject {
         activeAnalysis?.cancel()
     }
 
-    /// Format options changed while a plan was pending — re-run the
+    /// Format options changed while a plan was pending. Re-run the
     /// analysis on the retained payload; no re-send needed.
     func reanalyzeIfNeeded() {
         guard phase == .awaitingConfirmation,
@@ -300,7 +300,7 @@ final class ExtensionFormatStore: ObservableObject {
     }
 
     /// Curates the "Recent" folder on its own, independent of Format
-    /// Bookmarks and its `moveRecentToTop` toggle — reuses the retained
+    /// Bookmarks and its `moveRecentToTop` toggle. Reuses the retained
     /// payload from the current session rather than requiring a fresh Send
     /// Bookmarks. This only works while a session is still live and
     /// awaiting confirmation: the extension stops polling a session the
@@ -355,7 +355,7 @@ final class ExtensionFormatStore: ObservableObject {
                 sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
             } catch SortRecentFolderError.noRecentFolder {
                 guard currentSessionId == sessionId else { return }
-                statusMessage = "No folder named “Recent” was found — nothing to sort."
+                statusMessage = "No folder named “Recent” was found. Nothing to sort."
                 plan = previousPlan
                 pendingOps = previousOps
                 phase = .awaitingConfirmation
@@ -388,7 +388,7 @@ final class ExtensionFormatStore: ObservableObject {
     func refreshInstallState() {
         installState = installer.stateOfExport()
 
-        // Ship a newer bundled extension? Refresh the export in place —
+        // Ship a newer bundled extension? Refresh the export in place.
         // Chrome re-reads unpacked files on reload.
         if case .outdated = installState {
             do {

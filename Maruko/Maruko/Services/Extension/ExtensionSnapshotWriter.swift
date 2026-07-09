@@ -2,7 +2,7 @@ import Foundation
 
 /// Saves the raw session payload the extension sent (the live bookmark tree
 /// plus history) before anything is applied, for manual recovery. Undo via
-/// inverse ops is not implemented for the extension path — these snapshots
+/// inverse ops is not implemented for the extension path. These snapshots
 /// are the safety net.
 nonisolated struct ExtensionSnapshotWriter {
     static let maxSnapshots = 10

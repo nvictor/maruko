@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import SwiftData
 
-/// Owns the user-editable title rewrite rules — the configuration for what
+/// Owns the user-editable title rewrite rules. The configuration for what
 /// "Format Bookmarks" does to titles.
 @MainActor
 final class RewriteRulesStore: ObservableObject {
@@ -72,7 +72,7 @@ final class RewriteRulesStore: ObservableObject {
             }
 
             // Drop the "github > owner > repo" breadcrumb style in favor of
-            // "github owner/repo" — only touches rules still matching the
+            // "github owner/repo". Only touches rules still matching the
             // exact old default, so a user's own edits are left alone.
             if rule.name == "GitHub Repo Title" && rule.replacementTemplate == "github > $1 > $2" {
                 rule.replacementTemplate = "github $1/$2"
@@ -84,7 +84,7 @@ final class RewriteRulesStore: ObservableObject {
             // was accidentally parsed by AIRewriteEligibility as a required
             // input substring, silently disabling the rule for virtually every
             // real title. Reset any rule still carrying that exact old prompt
-            // to the corrected (quote-free) default — a user's own edits are
+            // to the corrected (quote-free) default. A user's own edits are
             // left alone.
             if rule.name == "Article Title Rewrite" && rule.replacementTemplate == Self.legacyArticlePromptWithAccidentalQuote {
                 migrateToDefaultArticleRewrite(rule)

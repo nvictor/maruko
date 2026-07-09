@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Wire types
 
-/// Body of `POST /session` — the extension's snapshot of the live profile.
+/// Body of `POST /session`. The extension's snapshot of the live profile.
 nonisolated struct ExtensionSessionPayload: Codable, Sendable {
     struct HistoryVisit: Codable, Sendable {
         let url: String
@@ -46,7 +46,7 @@ nonisolated enum ExtensionSessionPhase: String, Codable, Sendable {
 }
 
 nonisolated enum ExtensionServerEvent: Sendable {
-    /// Any authenticated request arrived — the extension is paired.
+    /// Any authenticated request arrived. The extension is paired.
     case paired
     case sessionReceived(sessionId: String, payload: ExtensionSessionPayload, rawBody: Data)
     case resultReceived(sessionId: String, result: ExtensionApplyResult)
@@ -103,7 +103,7 @@ nonisolated final class ExtensionSessionStore: @unchecked Sendable {
         transition(sessionId: sessionId, from: [.analyzing], to: .awaitingConfirmation)
     }
 
-    /// Format options changed before confirmation — the retained payload is
+    /// Format options changed before confirmation. The retained payload is
     /// being re-analyzed without a re-send from the extension.
     func markAnalyzing(sessionId: String) {
         transition(sessionId: sessionId, from: [.awaitingConfirmation], to: .analyzing)

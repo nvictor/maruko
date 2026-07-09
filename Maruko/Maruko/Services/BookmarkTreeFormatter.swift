@@ -6,7 +6,7 @@ struct DuplicateRemoval: Identifiable, Sendable {
     let url: String
     let folderPath: String
     let keptFolderPath: String
-    /// The node's own id (`raw["id"]`) — string in both the Bookmarks file
+    /// The node's own id (`raw["id"]`). String in both the Bookmarks file
     /// and the chrome.bookmarks API, so the extension can target the node.
     var nodeID: String?
 }
@@ -121,8 +121,8 @@ struct FormatPlan: Sendable {
     }
 }
 
-/// Applies Maruko's cleanup — remove duplicate URLs, rewrite titles, move
-/// recently opened bookmarks to the top of their folders — to a tree
+/// Applies Maruko's cleanup. Remove duplicate URLs, rewrite titles, move
+/// recently opened bookmarks to the top of their folders. To a tree
 /// adapted from chrome.bookmarks, returning the change plan for preview.
 /// The trees are mutated in place with the result.
 nonisolated enum BookmarkTreeFormatter {
@@ -143,7 +143,7 @@ nonisolated enum BookmarkTreeFormatter {
             : []
 
         // "Recent" folder curation is a separate, user-triggered action
-        // (`curateRecentFolderPlan`) — Format Bookmarks treats a folder
+        // (`curateRecentFolderPlan`). Format Bookmarks treats a folder
         // named "Recent" like any other folder here, so it still gets the
         // ordinary top-of-folder treatment below when enabled.
         var reorderedFolderCount = 0
@@ -153,7 +153,7 @@ nonisolated enum BookmarkTreeFormatter {
                     in: node,
                     recentVisits: recentVisits,
                     // The bookmark bar's own row of items is ordered
-                    // strategically by the user — never reorder it.
+                    // strategically by the user. Never reorder it.
                     skipThisFolder: key == "bookmark_bar"
                 )
             }
@@ -182,9 +182,9 @@ nonisolated enum BookmarkTreeFormatter {
         )
     }
 
-    /// Curates the "Recent" folder on its own — sorts it by last-visited
+    /// Curates the "Recent" folder on its own. Sorts it by last-visited
     /// date, pulls in qualifying candidates from Other Bookmarks' own
-    /// direct children, and caps it at `maxKept` — without touching
+    /// direct children, and caps it at `maxKept`. Without touching
     /// duplicates, titles, or any other folder's order. This is a separate,
     /// user-triggered action, independent of `FormatOptions.moveRecentToTop`.
     /// Returns `nil` if no folder named "Recent" exists anywhere in the tree.
@@ -318,7 +318,7 @@ nonisolated enum BookmarkTreeFormatter {
 
     /// Bookmarks eligible for the AI title pass: url nodes whose normalized
     /// URL appears in `recentVisits`, in depth-first order. Candidates are
-    /// keyed by `raw["guid"]` — the extension adapter synthesizes
+    /// keyed by `raw["guid"]`. The extension adapter synthesizes
     /// `guid = <chrome node id>` since chrome.bookmarks has no guid field.
     static func recentBookmarkCandidates(
         trees: [(rootKey: String, node: BookmarkNode)],
@@ -401,7 +401,7 @@ nonisolated enum BookmarkTreeFormatter {
     /// The first folder titled exactly "Recent", found via depth-first search
     /// across the given roots in a fixed order (bookmark bar, other, synced,
     /// then any remaining roots as encountered). If more than one "Recent"
-    /// folder exists anywhere in the tree, only the first is used — a
+    /// folder exists anywhere in the tree, only the first is used. A
     /// documented limitation, not multi-folder support. The title match
     /// trims surrounding whitespace and ignores case, so a trailing space or
     /// different capitalization doesn't silently defeat detection.
@@ -435,7 +435,7 @@ nonisolated enum BookmarkTreeFormatter {
     /// hit in `recentVisits` (bookmarks filed into other named folders, and
     /// never-visited items already sitting in Other Bookmarks, are left
     /// alone). All candidates are ranked by last-visited date, most recent
-    /// first — items with no visit rank oldest. The top `maxKept` end up in
+    /// first. Items with no visit rank oldest. The top `maxKept` end up in
     /// "Recent" (pulling in whichever Other Bookmarks candidates made the
     /// cut); anything that was in "Recent" but didn't make the cut moves
     /// back to Other Bookmarks. Subfolders inside "Recent" are left

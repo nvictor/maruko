@@ -78,7 +78,7 @@ struct RewriteRuleKindTests {
         // The prompt's "Skip if..." sentences already satisfy
         // AIRewriteEligibility's "title"/"skip"/"contain" trigger words, so
         // any quoted phrase in the combined text becomes a required input
-        // substring. The prompt's own output prefix must never be quoted —
+        // substring. The prompt's own output prefix must never be quoted.
         // that would make this (and virtually every other real title)
         // ineligible before the model ever sees it, exactly as it did when
         // the prefix instruction read `Prefix exactly with "Article: ".`.

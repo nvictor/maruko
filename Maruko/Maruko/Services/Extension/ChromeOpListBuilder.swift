@@ -34,13 +34,13 @@ nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
 /// chrome node id); moves come from `plan.recentFolderAdditions` (bookmarks
 /// pulled into a "Recent" folder from Other Bookmarks) and
 /// `plan.recentFolderEvictions` (bookmarks moved back out to Other Bookmarks);
-/// reorders are the one diff — a folder's final child ids against its
-/// original order minus the deleted ids — which confines them to
+/// reorders are the one diff. A folder's final child ids against its
+/// original order minus the deleted ids. Which confines them to
 /// `moveRecentToTop`/Recent-folder-curation effects and never emits one for
 /// the bookmark bar's own row (the formatter skips it, so the diff is empty
 /// there). A folder that merely gained or lost children at the tail (e.g.
 /// Other Bookmarks after a Recent-folder move) without any actual
-/// repositioning among what stayed doesn't get a reorder op — for a folder
+/// repositioning among what stayed doesn't get a reorder op. For a folder
 /// with thousands of children, emitting one anyway is enormously expensive
 /// for the extension to apply (it has to fetch and index-compare the whole
 /// child list) for a change that never needed repositioning in the first
@@ -69,8 +69,8 @@ nonisolated enum ChromeOpListBuilder {
             let expected = (originalChildOrders[folderId] ?? []).filter { !deleted.contains($0) }
 
             if finalOrder != expected {
-                // Restrict both sides to ids present in both — i.e. ignore
-                // anything that was only added or only removed — and compare
+                // Restrict both sides to ids present in both. I.e. ignore
+                // anything that was only added or only removed. And compare
                 // just the relative order of what persisted. If that's
                 // unchanged, nothing actually needs repositioning.
                 let finalSet = Set(finalOrder)

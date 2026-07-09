@@ -89,7 +89,7 @@ struct ChromeOpListBuilderTests {
 
         // "22" (news) was visited recently; dedupe removes "21" from the
         // same folder. Expected final order of folder "2": 22 first, then
-        // 20 — a complete order that already excludes the deleted 21.
+        // 20. A complete order that already excludes the deleted 21.
         let newsKey = try #require(URLNormalizer.normalize("https://news.ycombinator.com/"))
         let plan = format(trees, options: options, recentVisits: [newsKey: Date()])
         let ops = ChromeOpListBuilder.makeOps(
@@ -177,8 +177,8 @@ struct ChromeOpListBuilderTests {
         #expect(!recentReorder.orderedChildIds.contains("r1"))
         #expect(!recentReorder.orderedChildIds.contains("r2"))
 
-        // The "other" root only gained two appended items — nothing among
-        // its (empty, here) pre-existing children was repositioned — so it
+        // The "other" root only gained two appended items. Nothing among
+        // its (empty, here) pre-existing children was repositioned. So it
         // gets no reorder op at all.
         #expect(!ops.reorders.contains { $0.folderId == "2" })
     }
@@ -219,7 +219,7 @@ struct ChromeOpListBuilderTests {
         // Regression test: a folder with thousands of pre-existing children
         // that only gains an appended item (e.g. Other Bookmarks receiving
         // one eviction from a Recent-folder move) must not get a reorder op
-        // — emitting one for a huge folder when nothing among its existing
+        // Emitting one for a huge folder when nothing among its existing
         // children moved is enormously expensive for the extension to apply
         // for no actual benefit.
         let existingCount = 5000
@@ -254,7 +254,7 @@ struct ChromeOpListBuilderTests {
         #expect(ops.moves.first?.toFolderId == "2")
 
         // Other Bookmarks' 5000 pre-existing children kept their exact
-        // relative order — no reorder op, despite gaining a child.
+        // relative order. No reorder op, despite gaining a child.
         #expect(!ops.reorders.contains { $0.folderId == "2" })
     }
 }
