@@ -3,6 +3,10 @@ import Combine
 import Foundation
 import OSLog
 
+private enum SortRecentFolderError: Error {
+    case noRecentFolder
+}
+
 /// Orchestrates Maruko's formatting flow: run the localhost server the
 /// Chrome extension talks to, analyze the live tree it sends, preview the
 /// plan, and hand the confirmed op list back for the extension to apply.

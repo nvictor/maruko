@@ -158,7 +158,12 @@ struct ChromeOpListBuilderTests {
         let trees = try ChromeBookmarkTreeAdapter.adapt(tree: [syntheticRoot])
         let orders = ChromeBookmarkTreeAdapter.childOrders(tree: [syntheticRoot])
 
-        let plan = format(trees, options: .default, recentVisits: visits)
+        // Recent-folder curation is its own action now (`curateRecentFolderPlan`),
+        // not part of the automatic `formatTree` pass.
+        let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(
+            trees: trees.map { (rootKey: $0.rootKey, node: $0.node) },
+            recentVisits: visits
+        ))
         let ops = ChromeOpListBuilder.makeOps(originalChildOrders: orders, formattedTrees: trees, plan: plan)
 
         #expect(ops.moves.sorted { $0.id < $1.id } == [
