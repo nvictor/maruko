@@ -352,6 +352,37 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.titleChanges(matching: "zzz").isEmpty)
     }
 
+    @Test func confirmationSummaryOmitsZeroClauses() {
+        let emptyPlan = FormatPlan(
+            duplicates: [], titleChanges: [], reorderedFolderCount: 0,
+            recentFolderAdditions: [], recentFolderEvictions: [],
+            totalBookmarks: 0, totalFolders: 0
+        )
+        #expect(emptyPlan.confirmationSummary.hasPrefix("Makes no changes."))
+
+        let fullPlan = FormatPlan(
+            duplicates: [DuplicateRemoval(title: "A", url: "https://a.example.com/", folderPath: "Bar", keptFolderPath: "Bar")],
+            titleChanges: [TitleChange(url: "https://b.example.com/", oldTitle: "B", newTitle: "Bee", folderPath: "Bar")],
+            reorderedFolderCount: 2,
+            recentFolderAdditions: [], recentFolderEvictions: [],
+            totalBookmarks: 2, totalFolders: 1
+        )
+        #expect(fullPlan.confirmationSummary.hasPrefix("Removes 1 duplicates, rewrites 1 titles, moves recently opened bookmarks up in 2 folders."))
+        #expect(!fullPlan.confirmationSummary.contains("Recent"))
+
+        let recentOnlyPlan = FormatPlan(
+            duplicates: [], titleChanges: [], reorderedFolderCount: 0,
+            recentFolderAdditions: [
+                RecentFolderMove(title: "New", url: "https://new.example.com/"),
+            ],
+            recentFolderEvictions: [
+                RecentFolderMove(title: "Old", url: "https://old.example.com/"),
+            ],
+            totalBookmarks: 20, totalFolders: 1
+        )
+        #expect(recentOnlyPlan.confirmationSummary.hasPrefix("Updates Recent (1 added, 1 moved out)."))
+    }
+
     @Test func formatTreeIsIdempotent() throws {
         let trees = try self.trees(fromFixture: "chrome-unsorted")
         let recentVisits = ["https://dd.example.com/": Date()]
@@ -551,7 +582,12 @@ struct BookmarkTreeFormatterTests {
         #expect(recent.children.count == 25)
     }
 
-    @Test func formatTreeCuratesRecentFolderInsteadOfLegacyGlobalReorder() throws {
+    @Test func formatTreeTreatsRecentFolderAsOrdinaryFolder() throws {
+        // Recent-folder curation (pull-in + cap-at-20) is a separate,
+        // user-triggered action (`curateRecentFolderPlan`) — the automatic
+        // Format Bookmarks pass never special-cases a folder named "Recent"
+        // anymore. It gets the same top-of-folder treatment as any other
+        // folder, no cap, no pulling in from Other Bookmarks.
         let now = Date()
         var recentChildren: [[String: Any]] = []
         var visits: [String: Date] = [:]
@@ -561,17 +597,7 @@ struct BookmarkTreeFormatterTests {
             visits[url] = now.addingTimeInterval(Double(i))
         }
         let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: recentChildren)
-
-        // A second folder, elsewhere in the tree, whose contents WOULD be
-        // reordered by the legacy global pass if it ran.
-        let elsewhereVisit = "https://elsewhere.example.com/"
-        visits[elsewhereVisit] = now
-        let elsewhereFolderRaw = rawFolder(id: "20", name: "Elsewhere", children: [
-            rawURL(id: "e1", name: "Old", url: "https://old.example.com/"),
-            rawURL(id: "e2", name: "New", url: elsewhereVisit),
-        ])
-
-        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw, elsewhereFolderRaw]))!
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw]))!
         let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
 
         let trees: [(rootKey: String, node: BookmarkNode)] = [
@@ -581,14 +607,16 @@ struct BookmarkTreeFormatterTests {
 
         let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: visits)
 
-        #expect(plan.reorderedFolderCount == 0)
+        // `formatTree` never populates these — only `curateRecentFolderPlan` does.
         #expect(plan.recentFolderAdditions.isEmpty)
-        #expect(plan.recentFolderEvictions.count == 2)
+        #expect(plan.recentFolderEvictions.isEmpty)
+        #expect(plan.reorderedFolderCount == 1)
 
-        let elsewhere = bar.children.first { $0.title == "Elsewhere" }!
-        // Legacy reorder never ran: "Old" is still before "New" even though
-        // "New" was visited more recently.
-        #expect(elsewhere.children.map(\.title) == ["Old", "New"])
+        let recent = bar.children.first { $0.title == "Recent" }!
+        // All 22 items kept — no cap — sorted most-recent-first like any
+        // ordinary folder under the legacy top-of-folder pass.
+        #expect(recent.children.count == 22)
+        #expect(recent.children.first?.title == "Item 22")
     }
 
     @Test func formatTreeUsesLegacyGlobalReorderWhenNoRecentFolderExists() throws {
@@ -600,5 +628,41 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.reorderedFolderCount > 0)
         #expect(plan.recentFolderAdditions.isEmpty)
         #expect(plan.recentFolderEvictions.isEmpty)
+    }
+
+    @Test func curateRecentFolderPlanReturnsNilWhenNoRecentFolderExists() throws {
+        let trees = try self.trees(fromFixture: "chrome-unsorted")
+        let plan = BookmarkTreeFormatter.curateRecentFolderPlan(trees: trees, recentVisits: [:])
+        #expect(plan == nil)
+    }
+
+    @Test func curateRecentFolderPlanTouchesOnlyRecentFolderMoves() throws {
+        let now = Date()
+        var raws: [[String: Any]] = []
+        var visits: [String: Date] = [:]
+        for i in 1...22 {
+            let url = "https://item\(i).example.com/"
+            raws.append(rawURL(id: "\(i)", name: "Item \(i)", url: url))
+            visits[url] = now.addingTimeInterval(Double(i))
+        }
+        let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: raws)
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw]))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        let trees: [(rootKey: String, node: BookmarkNode)] = [
+            (rootKey: "bookmark_bar", node: bar),
+            (rootKey: "other", node: other),
+        ]
+
+        let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(trees: trees, recentVisits: visits))
+
+        #expect(plan.duplicates.isEmpty)
+        #expect(plan.titleChanges.isEmpty)
+        #expect(plan.reorderedFolderCount == 0)
+        #expect(plan.recentFolderAdditions.isEmpty)
+        #expect(plan.recentFolderEvictions.map(\.title) == ["Item 2", "Item 1"])
+
+        let recent = bar.children.first { $0.title == "Recent" }!
+        #expect(recent.children.count == 20)
     }
 }

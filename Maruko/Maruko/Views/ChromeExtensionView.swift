@@ -55,6 +55,12 @@ struct ChromeExtensionView: View {
                 .disabled(extensionStore.phase == .analyzing)
                 .help("Choose what Format Bookmarks does")
 
+                Button("Sort Recent Folder") {
+                    extensionStore.sortRecentFolder()
+                }
+                .disabled(extensionStore.phase != .awaitingConfirmation)
+                .help("Sorts the \u{201C}Recent\u{201D} folder by last opened, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most recent — independent of Format Bookmarks.")
+
                 Button("Apply via Extension") {
                     showingApplyConfirmation = true
                 }
@@ -72,7 +78,7 @@ struct ChromeExtensionView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = extensionStore.plan {
-                Text("Removes \(plan.duplicates.count) duplicates, rewrites \(plan.titleChanges.count) titles, moves recently opened bookmarks up in \(plan.reorderedFolderCount) folders. The extension applies the changes while Chrome runs, so sync picks them up like ordinary edits. A snapshot of the current tree is saved first. Undo is not available for extension formatting yet.")
+                Text(plan.confirmationSummary)
             }
         }
         .task {

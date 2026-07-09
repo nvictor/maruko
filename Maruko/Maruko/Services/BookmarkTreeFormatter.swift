@@ -95,6 +95,23 @@ struct FormatPlan: Sendable {
                 || $0.url.localizedCaseInsensitiveContains(query)
         }
     }
+
+    /// Human-readable description of what applying this plan will do, for
+    /// the apply confirmation dialog. Omits clauses whose count is zero, so
+    /// a Recent-only plan (from `curateRecentFolderPlan`) doesn't read
+    /// "removes 0 duplicates, rewrites 0 titles…".
+    var confirmationSummary: String {
+        var clauses: [String] = []
+        if !duplicates.isEmpty { clauses.append("removes \(duplicates.count) duplicates") }
+        if !titleChanges.isEmpty { clauses.append("rewrites \(titleChanges.count) titles") }
+        if reorderedFolderCount > 0 { clauses.append("moves recently opened bookmarks up in \(reorderedFolderCount) folders") }
+        if !recentFolderAdditions.isEmpty || !recentFolderEvictions.isEmpty {
+            clauses.append("updates Recent (\(recentFolderAdditions.count) added, \(recentFolderEvictions.count) moved out)")
+        }
+        let joined = clauses.isEmpty ? "makes no changes" : clauses.joined(separator: ", ")
+        let sentence = joined.prefix(1).uppercased() + joined.dropFirst() + "."
+        return "\(sentence) The extension applies the changes while Chrome runs, so sync picks them up like ordinary edits. A snapshot of the current tree is saved first. Undo is not available for extension formatting yet."
+    }
 }
 
 /// Applies Maruko's cleanup — remove duplicate URLs, rewrite titles, move
@@ -118,32 +135,20 @@ nonisolated enum BookmarkTreeFormatter {
             ? rewriteTitles(in: roots, rules: rules, titleOverrides: titleOverrides)
             : []
 
+        // "Recent" folder curation is a separate, user-triggered action
+        // (`curateRecentFolderPlan`) — Format Bookmarks treats a folder
+        // named "Recent" like any other folder here, so it still gets the
+        // ordinary top-of-folder treatment below when enabled.
         var reorderedFolderCount = 0
-        var recentFolderAdditions: [RecentFolderMove] = []
-        var recentFolderEvictions: [RecentFolderMove] = []
         if options.moveRecentToTop {
-            if let recentFolder = findRecentFolder(in: trees) {
-                // A "Recent" folder curates itself: recently-visited direct
-                // children of Other Bookmarks get pulled in, the folder is
-                // sorted and capped, and whatever falls out of the cap goes
-                // back to Other Bookmarks. The legacy global reorder is
-                // skipped entirely everywhere else in the tree.
-                let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
-                (recentFolderAdditions, recentFolderEvictions) = curateRecentFolder(
-                    recentFolder,
-                    otherRoot: otherRoot,
-                    recentVisits: recentVisits
+            for (key, node) in trees {
+                reorderedFolderCount += moveRecentToTop(
+                    in: node,
+                    recentVisits: recentVisits,
+                    // The bookmark bar's own row of items is ordered
+                    // strategically by the user — never reorder it.
+                    skipThisFolder: key == "bookmark_bar"
                 )
-            } else {
-                for (key, node) in trees {
-                    reorderedFolderCount += moveRecentToTop(
-                        in: node,
-                        recentVisits: recentVisits,
-                        // The bookmark bar's own row of items is ordered
-                        // strategically by the user — never reorder it.
-                        skipThisFolder: key == "bookmark_bar"
-                    )
-                }
             }
         }
 
@@ -162,11 +167,53 @@ nonisolated enum BookmarkTreeFormatter {
             duplicates: duplicates,
             titleChanges: titleChanges,
             reorderedFolderCount: reorderedFolderCount,
-            recentFolderAdditions: recentFolderAdditions,
-            recentFolderEvictions: recentFolderEvictions,
+            recentFolderAdditions: [],
+            recentFolderEvictions: [],
             totalBookmarks: totalBookmarks,
             // Don't count the root containers themselves.
             totalFolders: max(0, totalFolders - roots.count)
+        )
+    }
+
+    /// Curates the "Recent" folder on its own — sorts it by last-visited
+    /// date, pulls in qualifying candidates from Other Bookmarks' own
+    /// direct children, and caps it at `maxKept` — without touching
+    /// duplicates, titles, or any other folder's order. This is a separate,
+    /// user-triggered action, independent of `FormatOptions.moveRecentToTop`.
+    /// Returns `nil` if no folder named "Recent" exists anywhere in the tree.
+    static func curateRecentFolderPlan(
+        trees: [(rootKey: String, node: BookmarkNode)],
+        recentVisits: [String: Date],
+        maxKept: Int = 20
+    ) -> FormatPlan? {
+        guard let recentFolder = findRecentFolder(in: trees) else { return nil }
+        let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
+        let (additions, evictions) = curateRecentFolder(
+            recentFolder,
+            otherRoot: otherRoot,
+            recentVisits: recentVisits,
+            maxKept: maxKept
+        )
+
+        var totalBookmarks = 0
+        var totalFolders = 0
+        for (_, node) in trees {
+            visit(node) { n in
+                switch n.kind {
+                case .url: totalBookmarks += 1
+                case .folder: totalFolders += 1
+                }
+            }
+        }
+
+        return FormatPlan(
+            duplicates: [],
+            titleChanges: [],
+            reorderedFolderCount: 0,
+            recentFolderAdditions: additions,
+            recentFolderEvictions: evictions,
+            totalBookmarks: totalBookmarks,
+            totalFolders: max(0, totalFolders - trees.count)
         )
     }
 

@@ -295,6 +295,80 @@ final class ExtensionFormatStore: ObservableObject {
         beginAnalysis(sessionId: sessionId, payload: payload)
     }
 
+    /// Curates the "Recent" folder on its own, independent of Format
+    /// Bookmarks and its `moveRecentToTop` toggle — reuses the retained
+    /// payload from the current session rather than requiring a fresh Send
+    /// Bookmarks. This only works while a session is still live and
+    /// awaiting confirmation: the extension stops polling a session the
+    /// moment it goes terminal, and there's no way to hand it a session id
+    /// it didn't itself request, so `phase == .awaitingConfirmation` is a
+    /// hard precondition, not just a convenience check.
+    func sortRecentFolder() {
+        guard phase == .awaitingConfirmation,
+              let sessionId = currentSessionId,
+              let payload = lastPayload else { return }
+
+        activeAnalysis?.cancel()
+        let previousPlan = plan
+        let previousOps = pendingOps
+        statusMessage = nil
+        errorMessage = nil
+        phase = .analyzing
+        sessionStore?.markAnalyzing(sessionId: sessionId)
+
+        let options = formatOptions
+        let work = Task.detached(priority: .userInitiated) { () -> (FormatPlan, BookmarkOps) in
+            let recentVisits = ExtensionHistoryMapper.recentVisits(
+                history: payload.history,
+                cutoff: options.recencyCutoff
+            )
+            let rooted = try ChromeBookmarkTreeAdapter.adapt(tree: payload.tree)
+            let originalOrders = ChromeBookmarkTreeAdapter.childOrders(tree: payload.tree)
+            let trees = rooted.map { (rootKey: $0.rootKey, node: $0.node) }
+
+            guard let plan = BookmarkTreeFormatter.curateRecentFolderPlan(
+                trees: trees,
+                recentVisits: recentVisits
+            ) else { throw SortRecentFolderError.noRecentFolder }
+
+            let ops = ChromeOpListBuilder.makeOps(
+                originalChildOrders: originalOrders,
+                formattedTrees: rooted,
+                plan: plan
+            )
+            return (plan, ops)
+        }
+        activeAnalysis = work
+
+        Task {
+            defer { activeAnalysis = nil }
+            do {
+                let (newPlan, newOps) = try await work.value
+                guard currentSessionId == sessionId else { return }
+                plan = newPlan
+                pendingOps = newOps
+                phase = .awaitingConfirmation
+                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
+            } catch SortRecentFolderError.noRecentFolder {
+                guard currentSessionId == sessionId else { return }
+                statusMessage = "No folder named “Recent” was found — nothing to sort."
+                plan = previousPlan
+                pendingOps = previousOps
+                phase = .awaitingConfirmation
+                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
+            } catch is CancellationError {
+                guard currentSessionId == sessionId else { return }
+                plan = previousPlan
+                pendingOps = previousOps
+                phase = .awaitingConfirmation
+                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
+            } catch {
+                guard currentSessionId == sessionId else { return }
+                failSession(sessionId, message: error.localizedDescription)
+            }
+        }
+    }
+
     // MARK: - Confirmation
 
     func confirm() {
