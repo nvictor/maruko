@@ -344,14 +344,21 @@ nonisolated enum BookmarkTreeFormatter {
     /// across the given roots in a fixed order (bookmark bar, other, synced,
     /// then any remaining roots as encountered). If more than one "Recent"
     /// folder exists anywhere in the tree, only the first is used — a
-    /// documented limitation, not multi-folder support.
+    /// documented limitation, not multi-folder support. The title match
+    /// trims surrounding whitespace and ignores case, so a trailing space or
+    /// different capitalization doesn't silently defeat detection.
     static func findRecentFolder(in trees: [(rootKey: String, node: BookmarkNode)]) -> BookmarkNode? {
         let priority = ["bookmark_bar", "other", "synced"]
         let ordered = priority.compactMap { key in trees.first { $0.rootKey == key } }
             + trees.filter { tree in !priority.contains(tree.rootKey) }
 
+        func isRecentFolder(_ node: BookmarkNode) -> Bool {
+            node.kind == .folder
+                && node.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("Recent") == .orderedSame
+        }
+
         func dfs(_ node: BookmarkNode) -> BookmarkNode? {
-            if node.kind == .folder && node.title == "Recent" { return node }
+            if isRecentFolder(node) { return node }
             for child in node.children where child.kind == .folder {
                 if let found = dfs(child) { return found }
             }

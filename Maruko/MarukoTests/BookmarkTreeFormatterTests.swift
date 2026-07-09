@@ -414,6 +414,16 @@ struct BookmarkTreeFormatterTests {
         #expect(BookmarkTreeFormatter.findRecentFolder(in: [(rootKey: "bookmark_bar", node: bar)]) == nil)
     }
 
+    @Test func findRecentFolderToleratesWhitespaceAndCase() {
+        for name in ["Recent ", " Recent", "recent", "RECENT", "ReCeNt"] {
+            let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [
+                rawFolder(id: "10", name: name, children: []),
+            ]))!
+            let found = BookmarkTreeFormatter.findRecentFolder(in: [(rootKey: "bookmark_bar", node: bar)])
+            #expect(found?.raw["id"] as? String == "10", "expected to match folder named \(name.debugDescription)")
+        }
+    }
+
     @Test func curateRecentFolderSortsByRecencyAndRanksUnvisitedLast() {
         let now = Date()
         let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: [
