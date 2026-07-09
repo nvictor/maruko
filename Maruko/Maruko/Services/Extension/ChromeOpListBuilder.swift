@@ -31,12 +31,14 @@ nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
 
 /// Turns a formatted tree + its change plan into `BookmarkOps`. Deletes and
 /// retitles come straight from the plan's change records (which carry the
-/// chrome node id); moves come from `plan.recentFolderMoves` (bookmarks
-/// relocated out of a "Recent" folder); reorders are the one diff — a
-/// folder's final child ids against its original order minus the deleted
-/// ids — which confines them to `moveRecentToTop`/Recent-folder-curation
-/// effects and never emits one for the bookmark bar's own row (the
-/// formatter skips it, so the diff is empty there).
+/// chrome node id); moves come from `plan.recentFolderAdditions` (bookmarks
+/// pulled into a "Recent" folder from Other Bookmarks) and
+/// `plan.recentFolderEvictions` (bookmarks moved back out to Other Bookmarks);
+/// reorders are the one diff — a folder's final child ids against its
+/// original order minus the deleted ids — which confines them to
+/// `moveRecentToTop`/Recent-folder-curation effects and never emits one for
+/// the bookmark bar's own row (the formatter skips it, so the diff is empty
+/// there).
 nonisolated enum ChromeOpListBuilder {
     static func makeOps(
         originalChildOrders: [String: [String]],
@@ -48,7 +50,7 @@ nonisolated enum ChromeOpListBuilder {
         ops.retitles = plan.titleChanges.compactMap { change in
             change.nodeID.map { BookmarkOps.Retitle(id: $0, title: change.newTitle) }
         }
-        ops.moves = plan.recentFolderMoves.compactMap { move in
+        ops.moves = (plan.recentFolderAdditions + plan.recentFolderEvictions).compactMap { move in
             guard let id = move.nodeID, let toFolderId = move.toFolderID else { return nil }
             return BookmarkOps.Move(id: id, toFolderId: toFolderId)
         }

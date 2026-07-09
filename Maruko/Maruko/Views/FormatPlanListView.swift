@@ -10,7 +10,8 @@ struct FormatPlanListView: View {
     var body: some View {
         let duplicates = plan.duplicates(matching: filterText)
         let titleChanges = plan.titleChanges(matching: filterText)
-        let recentFolderMoves = plan.recentFolderMoves(matching: filterText)
+        let recentFolderAdditions = plan.recentFolderAdditions(matching: filterText)
+        let recentFolderEvictions = plan.recentFolderEvictions(matching: filterText)
         let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         List {
@@ -26,7 +27,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderMoves.isEmpty, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -69,13 +70,26 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if !recentFolderMoves.isEmpty {
-                Section(sectionTitle("Moved out of Recent", shown: recentFolderMoves.count, total: plan.recentFolderMoves.count)) {
+            if !recentFolderAdditions.isEmpty {
+                Section(sectionTitle("Moved into Recent", shown: recentFolderAdditions.count, total: plan.recentFolderAdditions.count)) {
                     Label(
-                        "\(plan.recentFolderMoves.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most recently opened).",
+                        "\(plan.recentFolderAdditions.count) bookmarks moved from Other Bookmarks into Recent because they were opened recently.",
+                        systemImage: "tray.and.arrow.up"
+                    )
+                    ForEach(recentFolderAdditions) { move in
+                        Text(move.title.isEmpty ? move.url : move.title)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            if !recentFolderEvictions.isEmpty {
+                Section(sectionTitle("Moved out of Recent", shown: recentFolderEvictions.count, total: plan.recentFolderEvictions.count)) {
+                    Label(
+                        "\(plan.recentFolderEvictions.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most recently opened).",
                         systemImage: "tray.and.arrow.down"
                     )
-                    ForEach(recentFolderMoves) { move in
+                    ForEach(recentFolderEvictions) { move in
                         Text(move.title.isEmpty ? move.url : move.title)
                             .lineLimit(1)
                     }
