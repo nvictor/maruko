@@ -21,9 +21,26 @@ enum BookmarkRewriteEngine {
 
         Skip if the title has fewer than 4 words, unless it contains a clear article headline phrase.
 
-        For matching titles, rewrite using proper title casing. Prefix exactly with “Article: ”.
+        For matching titles, rewrite using proper title casing, then add the prefix Article, followed by a colon and one space, before the rewritten title.
 
         Do not rewrite based on the URL alone. The title itself must look like an article headline.
+        """
+
+    nonisolated static let defaultWikipediaTitleRewritePrompt = """
+        Only apply this rule to Wikipedia articles — pages on wikipedia.org or
+        any subdomain of it, such as en.wikipedia.org. You can tell from the
+        URL shown next to the title. Skip every bookmark whose URL is not on
+        a Wikipedia domain — that covers everything else, including ordinary
+        articles or blog posts, which a separate rule already handles.
+
+        For a matching bookmark, rewrite the title using proper title casing,
+        drop any trailing hyphen-Wikipedia suffix added by the original page
+        title — for example, turn Albert Einstein - Wikipedia into Albert
+        Einstein — and then add the prefix Wikipedia, followed by a colon and
+        one space, before the cleaned title.
+
+        Do not rewrite based on the title alone if the URL is not a Wikipedia
+        domain.
         """
 
     static func sortedRules(_ rules: [RewriteRule]) -> [RewriteRule] {
@@ -127,7 +144,7 @@ enum BookmarkRewriteEngine {
                 order: 0,
                 matchField: .url,
                 pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
-                replacementTemplate: "github > $1 > $2",
+                replacementTemplate: "github $1/$2",
                 isCaseSensitive: false
             ),
             RewriteRule(
@@ -138,6 +155,43 @@ enum BookmarkRewriteEngine {
                 matchField: .title,
                 pattern: "",
                 replacementTemplate: Self.defaultArticleTitleRewritePrompt,
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "Bitbucket Repo Title",
+                isEnabled: true,
+                order: 2,
+                matchField: .url,
+                pattern: #"^https://bitbucket\.org/([^/]+)/([^/?#]+)$"#,
+                replacementTemplate: "bitbucket $1/$2",
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "X/Twitter Profile Title",
+                isEnabled: true,
+                order: 3,
+                matchField: .url,
+                pattern: #"^https://(?:www\.)?(?:x|twitter)\.com/(?!home$|search$|explore$|notifications$|messages$|settings$|compose$|i$|i/)([A-Za-z0-9_]{1,15})/?$"#,
+                replacementTemplate: "x $1",
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "Instagram Profile Title",
+                isEnabled: true,
+                order: 4,
+                matchField: .url,
+                pattern: #"^https://(?:www\.)?instagram\.com/(?!explore$|reels$|direct$|accounts$|about$|developer$|legal$)([A-Za-z0-9_.]{1,30})/?$"#,
+                replacementTemplate: "instagram $1",
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "Wikipedia Article Rewrite",
+                isEnabled: true,
+                order: 5,
+                kind: .aiPrompt,
+                matchField: .title,
+                pattern: "",
+                replacementTemplate: Self.defaultWikipediaTitleRewritePrompt,
                 isCaseSensitive: false
             )
         ]

@@ -1,12 +1,17 @@
 import Foundation
 
 /// The edit list the extension applies via chrome.bookmarks, in order:
-/// deletes, then retitles, then reorders. `orderedChildIds` is the complete
-/// desired child order of a folder *after* deletes.
+/// deletes, then retitles, then moves, then reorders. `orderedChildIds` is
+/// the complete desired child order of a folder *after* deletes and moves.
 nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
     struct Retitle: Codable, Equatable, Sendable {
         let id: String
         let title: String
+    }
+
+    struct Move: Codable, Equatable, Sendable {
+        let id: String
+        let toFolderId: String
     }
 
     struct Reorder: Codable, Equatable, Sendable {
@@ -16,19 +21,22 @@ nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
 
     var deletes: [String] = []
     var retitles: [Retitle] = []
+    var moves: [Move] = []
     var reorders: [Reorder] = []
 
     var isEmpty: Bool {
-        deletes.isEmpty && retitles.isEmpty && reorders.isEmpty
+        deletes.isEmpty && retitles.isEmpty && moves.isEmpty && reorders.isEmpty
     }
 }
 
 /// Turns a formatted tree + its change plan into `BookmarkOps`. Deletes and
 /// retitles come straight from the plan's change records (which carry the
-/// chrome node id); reorders are the one diff — a folder's final child ids
-/// against its original order minus the deleted ids — which confines them
-/// to `moveRecentToTop` effects and never emits one for the bookmark bar's
-/// own row (the formatter skips it, so the diff is empty there).
+/// chrome node id); moves come from `plan.recentFolderMoves` (bookmarks
+/// relocated out of a "Recent" folder); reorders are the one diff — a
+/// folder's final child ids against its original order minus the deleted
+/// ids — which confines them to `moveRecentToTop`/Recent-folder-curation
+/// effects and never emits one for the bookmark bar's own row (the
+/// formatter skips it, so the diff is empty there).
 nonisolated enum ChromeOpListBuilder {
     static func makeOps(
         originalChildOrders: [String: [String]],
@@ -39,6 +47,10 @@ nonisolated enum ChromeOpListBuilder {
         ops.deletes = plan.duplicates.compactMap(\.nodeID)
         ops.retitles = plan.titleChanges.compactMap { change in
             change.nodeID.map { BookmarkOps.Retitle(id: $0, title: change.newTitle) }
+        }
+        ops.moves = plan.recentFolderMoves.compactMap { move in
+            guard let id = move.nodeID, let toFolderId = move.toFolderID else { return nil }
+            return BookmarkOps.Move(id: id, toFolderId: toFolderId)
         }
 
         let deleted = Set(ops.deletes)

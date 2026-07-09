@@ -326,6 +326,7 @@ struct BookmarkTreeFormatterTests {
                 TitleChange(url: "https://news.example.com/", oldTitle: "Old News", newTitle: "News", folderPath: "Bar"),
             ],
             reorderedFolderCount: 0,
+            recentFolderMoves: [],
             totalBookmarks: 4,
             totalFolders: 1
         )
@@ -361,5 +362,181 @@ struct BookmarkTreeFormatterTests {
         // should find nothing left to change.
         let second = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
         #expect(second.isEmpty)
+    }
+
+    // MARK: - "Recent" folder curation
+
+    private func rawURL(id: String, name: String, url: String) -> [String: Any] {
+        ["type": "url", "id": id, "guid": id, "name": name, "url": url]
+    }
+
+    private func rawFolder(id: String, name: String, children: [[String: Any]]) -> [String: Any] {
+        ["type": "folder", "id": id, "guid": id, "name": name, "children": children]
+    }
+
+    @Test func findRecentFolderLocatesNestedFolderByExactTitle() {
+        let recent = rawFolder(id: "10", name: "Recent", children: [])
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [
+            rawFolder(id: "2", name: "Other Stuff", children: [recent]),
+        ]))!
+        let other = BookmarkNode(raw: rawFolder(id: "3", name: "Other Bookmarks", children: []))!
+
+        let found = BookmarkTreeFormatter.findRecentFolder(in: [
+            (rootKey: "bookmark_bar", node: bar),
+            (rootKey: "other", node: other),
+        ])
+
+        #expect(found?.title == "Recent")
+        #expect(found?.raw["id"] as? String == "10")
+    }
+
+    @Test func findRecentFolderPrefersBookmarkBarThenOtherThenSynced() {
+        let recentInOther = rawFolder(id: "20", name: "Recent", children: [])
+        let recentInSynced = rawFolder(id: "30", name: "Recent", children: [])
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: []))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: [recentInOther]))!
+        let synced = BookmarkNode(raw: rawFolder(id: "3", name: "Mobile Bookmarks", children: [recentInSynced]))!
+
+        let found = BookmarkTreeFormatter.findRecentFolder(in: [
+            (rootKey: "synced", node: synced),
+            (rootKey: "other", node: other),
+            (rootKey: "bookmark_bar", node: bar),
+        ])
+
+        // "other" beats "synced" per the fixed priority order, even though
+        // it appears later in the input array.
+        #expect(found?.raw["id"] as? String == "20")
+    }
+
+    @Test func findRecentFolderReturnsNilWhenAbsent() {
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: []))!
+        #expect(BookmarkTreeFormatter.findRecentFolder(in: [(rootKey: "bookmark_bar", node: bar)]) == nil)
+    }
+
+    @Test func curateRecentFolderSortsByRecencyAndRanksUnvisitedLast() {
+        let now = Date()
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: [
+            rawURL(id: "a", name: "A", url: "https://a.example.com/"),
+            rawURL(id: "b", name: "B", url: "https://b.example.com/"),
+            rawURL(id: "c", name: "C (never visited)", url: "https://c.example.com/"),
+        ]))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+        let visits = [
+            "https://a.example.com/": now.addingTimeInterval(-3600),
+            "https://b.example.com/": now,
+        ]
+
+        let moves = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 20)
+
+        #expect(moves.isEmpty)
+        #expect(recent.children.map(\.title) == ["B", "A", "C (never visited)"])
+    }
+
+    @Test func curateRecentFolderKeepsExactlyTwentyWithoutEviction() {
+        let children = (1...20).map { rawURL(id: "\($0)", name: "Item \($0)", url: "https://\($0).example.com/") }
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: children))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        let moves = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: [:], maxKept: 20)
+
+        #expect(moves.isEmpty)
+        #expect(recent.children.count == 20)
+        #expect(other.children.isEmpty)
+    }
+
+    @Test func curateRecentFolderEvictsOldestBeyondCapToOtherBookmarks() {
+        let now = Date()
+        var raws: [[String: Any]] = []
+        var visits: [String: Date] = [:]
+        for i in 1...22 {
+            let url = "https://item\(i).example.com/"
+            raws.append(rawURL(id: "\(i)", name: "Item \(i)", url: url))
+            // Higher i = more recently visited; items 1 and 2 are oldest.
+            visits[url] = now.addingTimeInterval(Double(i))
+        }
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: raws))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        let moves = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 20)
+
+        #expect(recent.children.count == 20)
+        #expect(recent.children.first?.title == "Item 22")
+        #expect(moves.map(\.title) == ["Item 2", "Item 1"])
+        #expect(moves.allSatisfy { $0.toFolderID == "2" })
+        #expect(other.children.map(\.title) == ["Item 2", "Item 1"])
+    }
+
+    @Test func curateRecentFolderLeavesSubfoldersInPlaceAfterURLChildren() {
+        let subfolder = rawFolder(id: "99", name: "Nested", children: [])
+        let raws: [[String: Any]] = [subfolder] + (1...3).map {
+            rawURL(id: "\($0)", name: "Item \($0)", url: "https://\($0).example.com/")
+        }
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: raws))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        _ = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: [:], maxKept: 20)
+
+        #expect(recent.children.last?.title == "Nested")
+        #expect(recent.children.last?.kind == .folder)
+    }
+
+    @Test func curateRecentFolderNoOpsWhenOtherRootMissing() {
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: (1...25).map {
+            rawURL(id: "\($0)", name: "Item \($0)", url: "https://\($0).example.com/")
+        }))!
+
+        let moves = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: nil, recentVisits: [:], maxKept: 20)
+
+        #expect(moves.isEmpty)
+        #expect(recent.children.count == 25)
+    }
+
+    @Test func formatTreeCuratesRecentFolderInsteadOfLegacyGlobalReorder() throws {
+        let now = Date()
+        var recentChildren: [[String: Any]] = []
+        var visits: [String: Date] = [:]
+        for i in 1...22 {
+            let url = "https://recent\(i).example.com/"
+            recentChildren.append(rawURL(id: "r\(i)", name: "Item \(i)", url: url))
+            visits[url] = now.addingTimeInterval(Double(i))
+        }
+        let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: recentChildren)
+
+        // A second folder, elsewhere in the tree, whose contents WOULD be
+        // reordered by the legacy global pass if it ran.
+        let elsewhereVisit = "https://elsewhere.example.com/"
+        visits[elsewhereVisit] = now
+        let elsewhereFolderRaw = rawFolder(id: "20", name: "Elsewhere", children: [
+            rawURL(id: "e1", name: "Old", url: "https://old.example.com/"),
+            rawURL(id: "e2", name: "New", url: elsewhereVisit),
+        ])
+
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw, elsewhereFolderRaw]))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        let trees: [(rootKey: String, node: BookmarkNode)] = [
+            (rootKey: "bookmark_bar", node: bar),
+            (rootKey: "other", node: other),
+        ]
+
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: visits)
+
+        #expect(plan.reorderedFolderCount == 0)
+        #expect(plan.recentFolderMoves.count == 2)
+
+        let elsewhere = bar.children.first { $0.title == "Elsewhere" }!
+        // Legacy reorder never ran: "Old" is still before "New" even though
+        // "New" was visited more recently.
+        #expect(elsewhere.children.map(\.title) == ["Old", "New"])
+    }
+
+    @Test func formatTreeUsesLegacyGlobalReorderWhenNoRecentFolderExists() throws {
+        let trees = try self.trees(fromFixture: "chrome-unsorted")
+        let recentVisits = ["https://dd.example.com/": Date()]
+
+        let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
+
+        #expect(plan.reorderedFolderCount > 0)
+        #expect(plan.recentFolderMoves.isEmpty)
     }
 }

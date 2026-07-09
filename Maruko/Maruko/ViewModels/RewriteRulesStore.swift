@@ -18,6 +18,7 @@ final class RewriteRulesStore: ObservableObject {
         do {
             try seedDefaultRulesIfNeeded()
             try migrateLegacyRulesIfNeeded()
+            try addMissingDefaultRulesIfNeeded()
             _ = try loadRewriteRules()
         } catch {
             errorMessage = error.localizedDescription
@@ -63,11 +64,32 @@ final class RewriteRulesStore: ObservableObject {
                 rule.kindRaw = "regexMatchReplace"
                 rule.matchField = .url
                 rule.pattern = #"^https://github\.com/([^/]+)/([^/?#]+)$"#
-                rule.replacementTemplate = "github > $1 > $2"
+                rule.replacementTemplate = "github $1/$2"
                 rule.isCaseSensitive = false
                 rule.updatedAt = Date()
                 changed = true
                 continue
+            }
+
+            // Drop the "github > owner > repo" breadcrumb style in favor of
+            // "github owner/repo" — only touches rules still matching the
+            // exact old default, so a user's own edits are left alone.
+            if rule.name == "GitHub Repo Title" && rule.replacementTemplate == "github > $1 > $2" {
+                rule.replacementTemplate = "github $1/$2"
+                rule.updatedAt = Date()
+                changed = true
+            }
+
+            // The shipped Article prompt's own output-prefix quote ("Article: ")
+            // was accidentally parsed by AIRewriteEligibility as a required
+            // input substring, silently disabling the rule for virtually every
+            // real title. Reset any rule still carrying that exact old prompt
+            // to the corrected (quote-free) default — a user's own edits are
+            // left alone.
+            if rule.name == "Article Title Rewrite" && rule.replacementTemplate == Self.legacyArticlePromptWithAccidentalQuote {
+                migrateToDefaultArticleRewrite(rule)
+                rule.updatedAt = Date()
+                changed = true
             }
 
             if legacyKind == "containsTextTitleCaseWithPrefix" {
@@ -99,6 +121,25 @@ final class RewriteRulesStore: ObservableObject {
         if changed {
             try context.save()
         }
+    }
+
+    /// Inserts any built-in default rule not already present by name. Runs on
+    /// every launch (cheap no-op once caught up), so rules added to
+    /// `makeDefaultRules()` after a user's rule table was first seeded still
+    /// reach their existing install, without touching rules they've already
+    /// customized or removed.
+    func addMissingDefaultRulesIfNeeded() throws {
+        guard let context = modelContext else { return }
+        let existingNames = Set(try context.fetch(FetchDescriptor<RewriteRule>()).map(\.name))
+        let missing = BookmarkRewriteEngine.makeDefaultRules().filter { !existingNames.contains($0.name) }
+        guard !missing.isEmpty else { return }
+
+        let maxOrder = try context.fetch(FetchDescriptor<RewriteRule>()).map(\.order).max() ?? -1
+        for (offset, rule) in missing.enumerated() {
+            rule.order = maxOrder + 1 + offset
+            context.insert(rule)
+        }
+        try context.save()
     }
 
     func validateRulesBeforeApply(_ rules: [RewriteRule]) throws {
@@ -241,4 +282,19 @@ final class RewriteRulesStore: ObservableObject {
         rule.replacementTemplate = BookmarkRewriteEngine.defaultArticleTitleRewritePrompt
         rule.isCaseSensitive = false
     }
+
+    /// The exact `defaultArticleTitleRewritePrompt` text as originally
+    /// shipped, before its "Prefix exactly with “Article: ”." sentence was
+    /// reworded to drop the accidental quoted phrase.
+    private static let legacyArticlePromptWithAccidentalQuote = """
+        Only rewrite titles that clearly look like article or blog post titles.
+
+        Skip if the title is only a domain, site name, product name, app name, repo name, profile name, documentation section, homepage, or navigation label.
+
+        Skip if the title has fewer than 4 words, unless it contains a clear article headline phrase.
+
+        For matching titles, rewrite using proper title casing. Prefix exactly with “Article: ”.
+
+        Do not rewrite based on the URL alone. The title itself must look like an article headline.
+        """
 }

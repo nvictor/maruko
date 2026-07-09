@@ -10,6 +10,7 @@ struct FormatPlanListView: View {
     var body: some View {
         let duplicates = plan.duplicates(matching: filterText)
         let titleChanges = plan.titleChanges(matching: filterText)
+        let recentFolderMoves = plan.recentFolderMoves(matching: filterText)
         let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         List {
@@ -25,7 +26,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderMoves.isEmpty, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -65,6 +66,19 @@ struct FormatPlanListView: View {
                         "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(recencyWindowDays) days moved to the top. The bookmark bar's own row is never reordered.",
                         systemImage: "clock.arrow.circlepath"
                     )
+                }
+            }
+
+            if !recentFolderMoves.isEmpty {
+                Section(sectionTitle("Moved out of Recent", shown: recentFolderMoves.count, total: plan.recentFolderMoves.count)) {
+                    Label(
+                        "\(plan.recentFolderMoves.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most recently opened).",
+                        systemImage: "tray.and.arrow.down"
+                    )
+                    ForEach(recentFolderMoves) { move in
+                        Text(move.title.isEmpty ? move.url : move.title)
+                            .lineLimit(1)
+                    }
                 }
             }
         }

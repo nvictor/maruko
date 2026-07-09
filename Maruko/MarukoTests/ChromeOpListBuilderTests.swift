@@ -139,4 +139,43 @@ struct ChromeOpListBuilderTests {
 
         #expect(ops.isEmpty)
     }
+
+    @Test func overflowingRecentFolderEmitsMovesAndReordersForBothFolders() throws {
+        let now = Date()
+        var recentChildren: [ChromeBookmarkNode] = []
+        var visits: [String: Date] = [:]
+        for i in 1...22 {
+            let url = "https://item\(i).example.com/"
+            recentChildren.append(ChromeBookmarkNode(id: "r\(i)", title: "Item \(i)", url: url, unmodifiable: nil, folderType: nil, children: nil))
+            // Higher i = more recently visited; items 1 and 2 are oldest.
+            visits[url] = now.addingTimeInterval(Double(i))
+        }
+        let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)
+        let bar = ChromeBookmarkNode(id: "1", title: "Bookmarks Bar", url: nil, unmodifiable: nil, folderType: "bookmarks-bar", children: [recentFolder])
+        let other = ChromeBookmarkNode(id: "2", title: "Other Bookmarks", url: nil, unmodifiable: nil, folderType: "other", children: [])
+        let syntheticRoot = ChromeBookmarkNode(id: "0", title: "", url: nil, unmodifiable: nil, folderType: nil, children: [bar, other])
+
+        let trees = try ChromeBookmarkTreeAdapter.adapt(tree: [syntheticRoot])
+        let orders = ChromeBookmarkTreeAdapter.childOrders(tree: [syntheticRoot])
+
+        let plan = format(trees, options: .default, recentVisits: visits)
+        let ops = ChromeOpListBuilder.makeOps(originalChildOrders: orders, formattedTrees: trees, plan: plan)
+
+        #expect(ops.moves.sorted { $0.id < $1.id } == [
+            BookmarkOps.Move(id: "r1", toFolderId: "2"),
+            BookmarkOps.Move(id: "r2", toFolderId: "2"),
+        ])
+
+        let recentReorder = try #require(ops.reorders.first { $0.folderId == "10" })
+        #expect(recentReorder.orderedChildIds.count == 20)
+        #expect(recentReorder.orderedChildIds.first == "r22")
+        #expect(!recentReorder.orderedChildIds.contains("r1"))
+        #expect(!recentReorder.orderedChildIds.contains("r2"))
+
+        // Redundant-but-harmless: the "other" root's diff also shows the
+        // two relocated ids appended, in eviction order (least-stale of the
+        // two evicted items first, since eviction ranks by recency descending).
+        let otherReorder = try #require(ops.reorders.first { $0.folderId == "2" })
+        #expect(otherReorder.orderedChildIds == ["r2", "r1"])
+    }
 }

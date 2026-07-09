@@ -74,6 +74,37 @@ struct RewriteRuleKindTests {
         #expect(article?.replacementTemplate == BookmarkRewriteEngine.defaultArticleTitleRewritePrompt)
     }
 
+    @Test func defaultArticlePromptDoesNotGateEligibilityOnItsOwnOutputPrefix() {
+        // The prompt's "Skip if..." sentences already satisfy
+        // AIRewriteEligibility's "title"/"skip"/"contain" trigger words, so
+        // any quoted phrase in the combined text becomes a required input
+        // substring. The prompt's own output prefix must never be quoted —
+        // that would make this (and virtually every other real title)
+        // ineligible before the model ever sees it, exactly as it did when
+        // the prefix instruction read `Prefix exactly with "Article: ".`.
+        let eligibility = AIRewriteEligibility(instructions: BookmarkRewriteEngine.defaultArticleTitleRewritePrompt)
+        let candidate = AIRewriteCandidate(
+            guid: "recipe",
+            title: "How to Cook Rice the Right Way",
+            url: "https://example.com/rice"
+        )
+        #expect(eligibility.allows(candidate))
+    }
+
+    @Test @MainActor func defaultRulesCombinedEligibilityDoesNotRequireArticlePrefix() {
+        // End-to-end with the real shipped default rule set (Article +
+        // Wikipedia), an ordinary article title must still reach the model.
+        let snapshots = BookmarkRewriteEngine.makeDefaultRules().map(\.snapshot)
+        let combined = BookmarkRewriteEngine.combinedAIInstructions(from: snapshots)
+        let eligibility = AIRewriteEligibility(instructions: combined)
+        let candidate = AIRewriteCandidate(
+            guid: "recipe",
+            title: "How to Cook Rice the Right Way",
+            url: "https://example.com/rice"
+        )
+        #expect(eligibility.allows(candidate))
+    }
+
     @Test @MainActor func unknownKindRawFallsBackToRegex() {
         let rule = RewriteRule(
             name: "Legacy",

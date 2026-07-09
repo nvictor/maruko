@@ -21,16 +21,30 @@ struct TitleChange: Identifiable, Sendable {
     var nodeID: String?
 }
 
+struct RecentFolderMove: Identifiable, Sendable {
+    let id = UUID()
+    let title: String
+    let url: String
+    /// See `DuplicateRemoval.nodeID`.
+    var nodeID: String?
+    /// The destination folder's own id (Other Bookmarks).
+    var toFolderID: String?
+}
+
 struct FormatPlan: Sendable {
     let duplicates: [DuplicateRemoval]
     let titleChanges: [TitleChange]
-    /// Folders whose recently opened bookmarks were moved to the top.
+    /// Folders whose recently opened bookmarks were moved to the top. Zero
+    /// whenever a "Recent" folder is curated instead — see `recentFolderMoves`.
     let reorderedFolderCount: Int
+    /// Bookmarks moved out of a "Recent" folder into Other Bookmarks because
+    /// the folder held more than the most-recently-accessed 20.
+    let recentFolderMoves: [RecentFolderMove]
     let totalBookmarks: Int
     let totalFolders: Int
 
     var isEmpty: Bool {
-        duplicates.isEmpty && titleChanges.isEmpty && reorderedFolderCount == 0
+        duplicates.isEmpty && titleChanges.isEmpty && reorderedFolderCount == 0 && recentFolderMoves.isEmpty
     }
 
     /// Duplicates whose title or URL contains `query` (case-insensitive).
@@ -52,6 +66,17 @@ struct FormatPlan: Sendable {
         return titleChanges.filter {
             $0.oldTitle.localizedCaseInsensitiveContains(query)
                 || $0.newTitle.localizedCaseInsensitiveContains(query)
+                || $0.url.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// Recent-folder moves whose title or URL contains `query`
+    /// (case-insensitive). An empty or whitespace-only query matches everything.
+    func recentFolderMoves(matching query: String) -> [RecentFolderMove] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return recentFolderMoves }
+        return recentFolderMoves.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
                 || $0.url.localizedCaseInsensitiveContains(query)
         }
     }
@@ -79,15 +104,28 @@ nonisolated enum BookmarkTreeFormatter {
             : []
 
         var reorderedFolderCount = 0
+        var recentFolderMoves: [RecentFolderMove] = []
         if options.moveRecentToTop {
-            for (key, node) in trees {
-                reorderedFolderCount += moveRecentToTop(
-                    in: node,
-                    recentVisits: recentVisits,
-                    // The bookmark bar's own row of items is ordered
-                    // strategically by the user — never reorder it.
-                    skipThisFolder: key == "bookmark_bar"
+            if let recentFolder = findRecentFolder(in: trees) {
+                // A "Recent" folder curates itself — only its own children
+                // are sorted/capped; the legacy global reorder is skipped
+                // entirely everywhere else in the tree.
+                let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
+                recentFolderMoves = curateRecentFolder(
+                    recentFolder,
+                    otherRoot: otherRoot,
+                    recentVisits: recentVisits
                 )
+            } else {
+                for (key, node) in trees {
+                    reorderedFolderCount += moveRecentToTop(
+                        in: node,
+                        recentVisits: recentVisits,
+                        // The bookmark bar's own row of items is ordered
+                        // strategically by the user — never reorder it.
+                        skipThisFolder: key == "bookmark_bar"
+                    )
+                }
             }
         }
 
@@ -106,6 +144,7 @@ nonisolated enum BookmarkTreeFormatter {
             duplicates: duplicates,
             titleChanges: titleChanges,
             reorderedFolderCount: reorderedFolderCount,
+            recentFolderMoves: recentFolderMoves,
             totalBookmarks: totalBookmarks,
             // Don't count the root containers themselves.
             totalFolders: max(0, totalFolders - roots.count)
@@ -280,6 +319,70 @@ nonisolated enum BookmarkTreeFormatter {
 
         walk(root, skip: skipThisFolder)
         return reordered
+    }
+
+    /// The first folder titled exactly "Recent", found via depth-first search
+    /// across the given roots in a fixed order (bookmark bar, other, synced,
+    /// then any remaining roots as encountered). If more than one "Recent"
+    /// folder exists anywhere in the tree, only the first is used — a
+    /// documented limitation, not multi-folder support.
+    static func findRecentFolder(in trees: [(rootKey: String, node: BookmarkNode)]) -> BookmarkNode? {
+        let priority = ["bookmark_bar", "other", "synced"]
+        let ordered = priority.compactMap { key in trees.first { $0.rootKey == key } }
+            + trees.filter { tree in !priority.contains(tree.rootKey) }
+
+        func dfs(_ node: BookmarkNode) -> BookmarkNode? {
+            if node.kind == .folder && node.title == "Recent" { return node }
+            for child in node.children where child.kind == .folder {
+                if let found = dfs(child) { return found }
+            }
+            return nil
+        }
+
+        for tree in ordered {
+            if let found = dfs(tree.node) { return found }
+        }
+        return nil
+    }
+
+    /// Sorts a "Recent" folder's direct URL children by last-visited date,
+    /// most recent first — bookmarks with no visit in `recentVisits` rank
+    /// oldest. Keeps the top `maxKept` and relocates the rest into
+    /// `otherRoot`'s children (appended at the end; no ordering requirement
+    /// there). Subfolders inside "Recent" are left untouched, placed after
+    /// the sorted URL children. Returns the bookmarks that were relocated.
+    static func curateRecentFolder(
+        _ recentFolder: BookmarkNode,
+        otherRoot: BookmarkNode?,
+        recentVisits: [String: Date],
+        maxKept: Int = 20
+    ) -> [RecentFolderMove] {
+        guard let otherRoot, otherRoot !== recentFolder else { return [] }
+
+        let urlChildren = recentFolder.children.enumerated().filter { $0.element.kind == .url }
+        let nonURLChildren = recentFolder.children.filter { $0.kind != .url }
+
+        let ranked = urlChildren
+            .sorted { a, b in
+                let visitA = a.element.normalizedURL.flatMap { recentVisits[$0] } ?? .distantPast
+                let visitB = b.element.normalizedURL.flatMap { recentVisits[$0] } ?? .distantPast
+                if visitA != visitB { return visitA > visitB }
+                return a.offset < b.offset
+            }
+            .map(\.element)
+
+        let kept = Array(ranked.prefix(maxKept))
+        let evicted = Array(ranked.dropFirst(maxKept))
+
+        recentFolder.children = kept + nonURLChildren
+        guard !evicted.isEmpty else { return [] }
+
+        otherRoot.children.append(contentsOf: evicted)
+
+        let otherFolderId = otherRoot.raw["id"] as? String
+        return evicted.map {
+            RecentFolderMove(title: $0.title, url: $0.url ?? "", nodeID: $0.raw["id"] as? String, toFolderID: otherFolderId)
+        }
     }
 
     private static func visit(_ node: BookmarkNode, _ body: (BookmarkNode) -> Void) {

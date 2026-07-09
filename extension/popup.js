@@ -254,7 +254,7 @@ async function applyAndReport(sessionId, ops) {
 async function applyOps(ops) {
   const errors = [];
   const counts = { deleted: 0, retitled: 0, moved: 0 };
-  const total = ops.deletes.length + ops.retitles.length + ops.reorders.length;
+  const total = ops.deletes.length + ops.retitles.length + ops.moves.length + ops.reorders.length;
   let done = 0;
   const progress = () => setStatus(`Applying ${++done} of ${total}…`);
 
@@ -276,6 +276,20 @@ async function applyOps(ops) {
       counts.retitled++;
     } catch (error) {
       errors.push({ op: "retitle", id, message: String(error.message || error) });
+    }
+    progress();
+  }
+
+  // Must run before the reorders loop below: reorders only reindex within a
+  // folder's already-existing children, so a bookmark relocated here needs
+  // to have landed in its destination folder first.
+  for (const { id, toFolderId } of ops.moves) {
+    setStatus(`Moving bookmark ${done + 1} of ${total}…`);
+    try {
+      await chromeCall("Move bookmark", chrome.bookmarks.move, id, { parentId: toFolderId });
+      counts.moved++;
+    } catch (error) {
+      errors.push({ op: "move", id, message: String(error.message || error) });
     }
     progress();
   }
