@@ -177,10 +177,52 @@ struct ChromeOpListBuilderTests {
         #expect(!recentReorder.orderedChildIds.contains("r1"))
         #expect(!recentReorder.orderedChildIds.contains("r2"))
 
-        // Redundant-but-harmless: the "other" root's diff also shows the
-        // two relocated ids appended, in eviction order (least-stale of the
-        // two evicted items first, since eviction ranks by recency descending).
-        let otherReorder = try #require(ops.reorders.first { $0.folderId == "2" })
-        #expect(otherReorder.orderedChildIds == ["r2", "r1"])
+        // The "other" root only gained two appended items — nothing among
+        // its (empty, here) pre-existing children was repositioned — so it
+        // gets no reorder op at all.
+        #expect(!ops.reorders.contains { $0.folderId == "2" })
+    }
+
+    @Test func appendOnlyChangeToALargeFolderEmitsNoReorder() throws {
+        // Regression test: a folder with thousands of pre-existing children
+        // that only gains an appended item (e.g. Other Bookmarks receiving
+        // one eviction from a Recent-folder move) must not get a reorder op
+        // — emitting one for a huge folder when nothing among its existing
+        // children moved is enormously expensive for the extension to apply
+        // for no actual benefit.
+        let existingCount = 5000
+        let otherChildren: [ChromeBookmarkNode] = (1...existingCount).map {
+            ChromeBookmarkNode(id: "o\($0)", title: "Item \($0)", url: "https://o\($0).example.com/", unmodifiable: nil, folderType: nil, children: nil)
+        }
+        let recentChildren = (1...21).map {
+            ChromeBookmarkNode(id: "r\($0)", title: "Item \($0)", url: "https://r\($0).example.com/", unmodifiable: nil, folderType: nil, children: nil)
+        }
+        let now = Date()
+        var visits: [String: Date] = [:]
+        for i in 1...21 {
+            visits["https://r\(i).example.com/"] = now.addingTimeInterval(Double(i))
+        }
+
+        let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)
+        let bar = ChromeBookmarkNode(id: "1", title: "Bookmarks Bar", url: nil, unmodifiable: nil, folderType: "bookmarks-bar", children: [recentFolder])
+        let other = ChromeBookmarkNode(id: "2", title: "Other Bookmarks", url: nil, unmodifiable: nil, folderType: "other", children: otherChildren)
+        let syntheticRoot = ChromeBookmarkNode(id: "0", title: "", url: nil, unmodifiable: nil, folderType: nil, children: [bar, other])
+
+        let trees = try ChromeBookmarkTreeAdapter.adapt(tree: [syntheticRoot])
+        let orders = ChromeBookmarkTreeAdapter.childOrders(tree: [syntheticRoot])
+
+        let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(
+            trees: trees.map { (rootKey: $0.rootKey, node: $0.node) },
+            recentVisits: visits
+        ))
+        let ops = ChromeOpListBuilder.makeOps(originalChildOrders: orders, formattedTrees: trees, plan: plan)
+
+        // One item evicted from Recent (over the 20 cap) into Other Bookmarks.
+        #expect(ops.moves.count == 1)
+        #expect(ops.moves.first?.toFolderId == "2")
+
+        // Other Bookmarks' 5000 pre-existing children kept their exact
+        // relative order — no reorder op, despite gaining a child.
+        #expect(!ops.reorders.contains { $0.folderId == "2" })
     }
 }

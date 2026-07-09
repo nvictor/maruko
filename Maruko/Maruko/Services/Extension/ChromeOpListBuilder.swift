@@ -38,7 +38,13 @@ nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
 /// original order minus the deleted ids — which confines them to
 /// `moveRecentToTop`/Recent-folder-curation effects and never emits one for
 /// the bookmark bar's own row (the formatter skips it, so the diff is empty
-/// there).
+/// there). A folder that merely gained or lost children at the tail (e.g.
+/// Other Bookmarks after a Recent-folder move) without any actual
+/// repositioning among what stayed doesn't get a reorder op — for a folder
+/// with thousands of children, emitting one anyway is enormously expensive
+/// for the extension to apply (it has to fetch and index-compare the whole
+/// child list) for a change that never needed repositioning in the first
+/// place.
 nonisolated enum ChromeOpListBuilder {
     static func makeOps(
         originalChildOrders: [String: [String]],
@@ -61,10 +67,21 @@ nonisolated enum ChromeOpListBuilder {
             guard node.kind == .folder, let folderId = node.raw["id"] as? String else { return }
             let finalOrder = node.children.compactMap { $0.raw["id"] as? String }
             let expected = (originalChildOrders[folderId] ?? []).filter { !deleted.contains($0) }
+
             if finalOrder != expected {
-                ops.reorders.append(
-                    BookmarkOps.Reorder(folderId: folderId, orderedChildIds: finalOrder)
-                )
+                // Restrict both sides to ids present in both — i.e. ignore
+                // anything that was only added or only removed — and compare
+                // just the relative order of what persisted. If that's
+                // unchanged, nothing actually needs repositioning.
+                let finalSet = Set(finalOrder)
+                let expectedSet = Set(expected)
+                let commonFinal = finalOrder.filter { expectedSet.contains($0) }
+                let commonExpected = expected.filter { finalSet.contains($0) }
+                if commonFinal != commonExpected {
+                    ops.reorders.append(
+                        BookmarkOps.Reorder(folderId: folderId, orderedChildIds: finalOrder)
+                    )
+                }
             }
             for child in node.children {
                 walk(child)
