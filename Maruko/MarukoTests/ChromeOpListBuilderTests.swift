@@ -183,6 +183,38 @@ struct ChromeOpListBuilderTests {
         #expect(!ops.reorders.contains { $0.folderId == "2" })
     }
 
+    @Test func sortingRecentFolderUnderBookmarkBarEmitsReorderWithoutMoves() throws {
+        let now = Date()
+        let recentChildren = [
+            ChromeBookmarkNode(id: "r1", title: "Older", url: "https://older.example.com/", unmodifiable: nil, folderType: nil, children: nil),
+            ChromeBookmarkNode(id: "r2", title: "Newer", url: "https://newer.example.com/", unmodifiable: nil, folderType: nil, children: nil),
+            ChromeBookmarkNode(id: "r3", title: "Never visited", url: "https://never.example.com/", unmodifiable: nil, folderType: nil, children: nil),
+        ]
+        let visits = [
+            "https://older.example.com/": now.addingTimeInterval(-3600),
+            "https://newer.example.com/": now,
+        ]
+        let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)
+        let bar = ChromeBookmarkNode(id: "1", title: "Bookmarks Bar", url: nil, unmodifiable: nil, folderType: "bookmarks-bar", children: [recentFolder])
+        let other = ChromeBookmarkNode(id: "2", title: "Other Bookmarks", url: nil, unmodifiable: nil, folderType: "other", children: [])
+        let syntheticRoot = ChromeBookmarkNode(id: "0", title: "", url: nil, unmodifiable: nil, folderType: nil, children: [bar, other])
+
+        let trees = try ChromeBookmarkTreeAdapter.adapt(tree: [syntheticRoot])
+        let orders = ChromeBookmarkTreeAdapter.childOrders(tree: [syntheticRoot])
+        let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(
+            trees: trees.map { (rootKey: $0.rootKey, node: $0.node) },
+            recentVisits: visits
+        ))
+        let ops = ChromeOpListBuilder.makeOps(originalChildOrders: orders, formattedTrees: trees, plan: plan)
+
+        #expect(plan.recentFolderReordered)
+        #expect(!plan.isEmpty)
+        #expect(ops.moves.isEmpty)
+        #expect(ops.reorders == [
+            BookmarkOps.Reorder(folderId: "10", orderedChildIds: ["r2", "r1", "r3"]),
+        ])
+    }
+
     @Test func appendOnlyChangeToALargeFolderEmitsNoReorder() throws {
         // Regression test: a folder with thousands of pre-existing children
         // that only gains an appended item (e.g. Other Bookmarks receiving

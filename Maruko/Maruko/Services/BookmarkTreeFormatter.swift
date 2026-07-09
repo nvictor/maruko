@@ -43,12 +43,16 @@ struct FormatPlan: Sendable {
     /// Bookmarks moved out of a "Recent" folder into Other Bookmarks because
     /// the folder held more than the most-recently-accessed 20.
     let recentFolderEvictions: [RecentFolderMove]
+    /// The standalone Recent action sorted the Recent folder itself, even
+    /// when no bookmarks moved into or out of it.
+    var recentFolderReordered = false
     let totalBookmarks: Int
     let totalFolders: Int
 
     var isEmpty: Bool {
         duplicates.isEmpty && titleChanges.isEmpty && reorderedFolderCount == 0
             && recentFolderAdditions.isEmpty && recentFolderEvictions.isEmpty
+            && !recentFolderReordered
     }
 
     /// Duplicates whose title or URL contains `query` (case-insensitive).
@@ -107,6 +111,9 @@ struct FormatPlan: Sendable {
         if reorderedFolderCount > 0 { clauses.append("moves recently opened bookmarks up in \(reorderedFolderCount) folders") }
         if !recentFolderAdditions.isEmpty || !recentFolderEvictions.isEmpty {
             clauses.append("updates Recent (\(recentFolderAdditions.count) added, \(recentFolderEvictions.count) moved out)")
+        }
+        if recentFolderReordered {
+            clauses.append("sorts Recent by last opened")
         }
         let joined = clauses.isEmpty ? "makes no changes" : clauses.joined(separator: ", ")
         let sentence = joined.prefix(1).uppercased() + joined.dropFirst() + "."
@@ -188,12 +195,15 @@ nonisolated enum BookmarkTreeFormatter {
     ) -> FormatPlan? {
         guard let recentFolder = findRecentFolder(in: trees) else { return nil }
         let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
+        let originalRecentOrder = recentFolder.children.compactMap { $0.raw["id"] as? String }
         let (additions, evictions) = curateRecentFolder(
             recentFolder,
             otherRoot: otherRoot,
             recentVisits: recentVisits,
             maxKept: maxKept
         )
+        let finalRecentOrder = recentFolder.children.compactMap { $0.raw["id"] as? String }
+        let recentFolderReordered = originalRecentOrder != finalRecentOrder
 
         var totalBookmarks = 0
         var totalFolders = 0
@@ -212,6 +222,7 @@ nonisolated enum BookmarkTreeFormatter {
             reorderedFolderCount: 0,
             recentFolderAdditions: additions,
             recentFolderEvictions: evictions,
+            recentFolderReordered: recentFolderReordered,
             totalBookmarks: totalBookmarks,
             totalFolders: max(0, totalFolders - trees.count)
         )
@@ -436,15 +447,14 @@ nonisolated enum BookmarkTreeFormatter {
         recentVisits: [String: Date],
         maxKept: Int = 20
     ) -> (additions: [RecentFolderMove], evictions: [RecentFolderMove]) {
-        guard let otherRoot, otherRoot !== recentFolder else { return ([], []) }
-
         func lastVisit(_ node: BookmarkNode) -> Date {
             node.normalizedURL.flatMap { recentVisits[$0] } ?? .distantPast
         }
 
         let alreadyInRecent = recentFolder.children.filter { $0.kind == .url }
         let nonURLChildren = recentFolder.children.filter { $0.kind != .url }
-        let otherCandidates = otherRoot.children.filter { child in
+        let movableOtherRoot = otherRoot === recentFolder ? nil : otherRoot
+        let otherCandidates = (movableOtherRoot?.children ?? []).filter { child in
             child.kind == .url && child.normalizedURL.flatMap { recentVisits[$0] } != nil
         }
 
@@ -461,8 +471,9 @@ nonisolated enum BookmarkTreeFormatter {
             }
             .map(\.element)
 
-        let keptOrdered = Array(ranked.prefix(maxKept))
-        let droppedOrdered = Array(ranked.dropFirst(maxKept))
+        let effectiveMaxKept = movableOtherRoot == nil ? Int.max : maxKept
+        let keptOrdered = Array(ranked.prefix(effectiveMaxKept))
+        let droppedOrdered = Array(ranked.dropFirst(effectiveMaxKept))
 
         // Both derived from the ranked (not original-array) order, so the
         // move lists reflect recency order rather than incidental array order.
@@ -472,11 +483,11 @@ nonisolated enum BookmarkTreeFormatter {
         recentFolder.children = keptOrdered + nonURLChildren
 
         let additionIDs = Set(additions.map(ObjectIdentifier.init))
-        otherRoot.children.removeAll { additionIDs.contains(ObjectIdentifier($0)) }
-        otherRoot.children.append(contentsOf: evictions)
+        movableOtherRoot?.children.removeAll { additionIDs.contains(ObjectIdentifier($0)) }
+        movableOtherRoot?.children.append(contentsOf: evictions)
 
         let recentFolderID = recentFolder.raw["id"] as? String
-        let otherFolderID = otherRoot.raw["id"] as? String
+        let otherFolderID = movableOtherRoot?.raw["id"] as? String
 
         let additionMoves = additions.map {
             RecentFolderMove(title: $0.title, url: $0.url ?? "", nodeID: $0.raw["id"] as? String, toFolderID: recentFolderID)

@@ -381,6 +381,15 @@ struct BookmarkTreeFormatterTests {
             totalBookmarks: 20, totalFolders: 1
         )
         #expect(recentOnlyPlan.confirmationSummary.hasPrefix("Updates Recent (1 added, 1 moved out)."))
+
+        let recentSortPlan = FormatPlan(
+            duplicates: [], titleChanges: [], reorderedFolderCount: 0,
+            recentFolderAdditions: [], recentFolderEvictions: [],
+            recentFolderReordered: true,
+            totalBookmarks: 3, totalFolders: 1
+        )
+        #expect(!recentSortPlan.isEmpty)
+        #expect(recentSortPlan.confirmationSummary.hasPrefix("Sorts Recent by last opened."))
     }
 
     @Test func formatTreeIsIdempotent() throws {
@@ -659,10 +668,42 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.duplicates.isEmpty)
         #expect(plan.titleChanges.isEmpty)
         #expect(plan.reorderedFolderCount == 0)
+        #expect(plan.recentFolderReordered)
         #expect(plan.recentFolderAdditions.isEmpty)
         #expect(plan.recentFolderEvictions.map(\.title) == ["Item 2", "Item 1"])
 
         let recent = bar.children.first { $0.title == "Recent" }!
         #expect(recent.children.count == 20)
+    }
+
+    @Test func curateRecentFolderPlanMarksPureRecentSortAsChange() throws {
+        let now = Date()
+        let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: [
+            rawURL(id: "older", name: "Older", url: "https://older.example.com/"),
+            rawURL(id: "newer", name: "Newer", url: "https://newer.example.com/"),
+            rawURL(id: "never", name: "Never", url: "https://never.example.com/"),
+        ])
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw]))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+
+        let trees: [(rootKey: String, node: BookmarkNode)] = [
+            (rootKey: "bookmark_bar", node: bar),
+            (rootKey: "other", node: other),
+        ]
+        let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(
+            trees: trees,
+            recentVisits: [
+                "https://older.example.com/": now.addingTimeInterval(-3600),
+                "https://newer.example.com/": now,
+            ]
+        ))
+
+        #expect(plan.recentFolderAdditions.isEmpty)
+        #expect(plan.recentFolderEvictions.isEmpty)
+        #expect(plan.recentFolderReordered)
+        #expect(!plan.isEmpty)
+
+        let recent = bar.children.first { $0.title == "Recent" }!
+        #expect(recent.children.map(\.title) == ["Newer", "Older", "Never"])
     }
 }

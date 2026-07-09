@@ -27,7 +27,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, !plan.recentFolderReordered, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -93,6 +93,15 @@ struct FormatPlanListView: View {
                         Text(move.title.isEmpty ? move.url : move.title)
                             .lineLimit(1)
                     }
+                }
+            }
+
+            if plan.recentFolderReordered {
+                Section("Recent") {
+                    Label(
+                        "Recent will be sorted by last opened.",
+                        systemImage: "clock.arrow.circlepath"
+                    )
                 }
             }
         }
