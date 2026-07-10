@@ -304,11 +304,10 @@ async function applyOps(ops) {
       const existingChildren = await chromeCall("Read folder children", chrome.bookmarks.getChildren, folderId);
       const existing = new Set(existingChildren.map((c) => c.id));
       const desired = orderedChildIds.filter((id) => existing.has(id));
-      const desiredSet = new Set(desired);
-      const order = [
-        ...desired,
-        ...existingChildren.map((child) => child.id).filter((id) => !desiredSet.has(id)),
-      ];
+      // Model Chrome's current order, then update that model after each
+      // move. Starting from `desired` makes every item look as though it is
+      // already at its target index and silently skips the entire reorder.
+      const order = existingChildren.map((child) => child.id);
       for (let i = 0; i < desired.length; i++) {
         if (i % 10 === 0 || i === desired.length - 1) {
           setStatus(`Reordering folder ${folderNumber} of ${total}: ${i + 1} of ${desired.length}…`);
