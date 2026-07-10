@@ -671,6 +671,8 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.recentFolderReordered)
         #expect(plan.recentFolderAdditions.isEmpty)
         #expect(plan.recentFolderEvictions.map(\.title) == ["Item 2", "Item 1"])
+        #expect(plan.recentFolderItems.count == 20)
+        #expect(plan.recentFolderItems.map(\.title) == (3...22).reversed().map { "Item \($0)" })
 
         let recent = bar.children.first { $0.title == "Recent" }!
         #expect(recent.children.count == 20)
@@ -702,6 +704,8 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.recentFolderEvictions.isEmpty)
         #expect(plan.recentFolderReordered)
         #expect(!plan.isEmpty)
+        #expect(plan.recentFolderItems.map(\.title) == ["Newer", "Older", "Never"])
+        #expect(plan.recentFolderItems.last?.lastOpenedAt == nil)
 
         let recent = bar.children.first { $0.title == "Recent" }!
         #expect(recent.children.map(\.title) == ["Newer", "Older", "Never"])

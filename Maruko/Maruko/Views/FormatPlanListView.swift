@@ -12,6 +12,7 @@ struct FormatPlanListView: View {
         let titleChanges = plan.titleChanges(matching: filterText)
         let recentFolderAdditions = plan.recentFolderAdditions(matching: filterText)
         let recentFolderEvictions = plan.recentFolderEvictions(matching: filterText)
+        let recentFolderItems = plan.recentFolderItems(matching: filterText)
         let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         List {
@@ -27,7 +28,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, !plan.recentFolderReordered, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, recentFolderItems.isEmpty, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -96,12 +97,21 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if plan.recentFolderReordered {
-                Section("Recent") {
+            if !recentFolderItems.isEmpty {
+                Section(sectionTitle("Recent — newest first", shown: recentFolderItems.count, total: plan.recentFolderItems.count)) {
                     Label(
-                        "Recent will be sorted by last opened.",
+                        "These bookmarks will appear in Recent, sorted by last opened.",
                         systemImage: "clock.arrow.circlepath"
                     )
+                    ForEach(Array(recentFolderItems.enumerated()), id: \.element.id) { index, item in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(index + 1). \(item.title.isEmpty ? item.url : item.title)")
+                                .lineLimit(1)
+                            Text(item.lastOpenedAt?.formatted(date: .abbreviated, time: .shortened) ?? "No recorded open date")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }

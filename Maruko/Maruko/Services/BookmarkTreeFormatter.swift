@@ -31,6 +31,13 @@ struct RecentFolderMove: Identifiable, Sendable {
     var toFolderID: String?
 }
 
+struct RecentFolderItem: Identifiable, Sendable {
+    let id = UUID()
+    let title: String
+    let url: String
+    let lastOpenedAt: Date?
+}
+
 struct FormatPlan: Sendable {
     let duplicates: [DuplicateRemoval]
     let titleChanges: [TitleChange]
@@ -43,6 +50,8 @@ struct FormatPlan: Sendable {
     /// Bookmarks moved out of a "Recent" folder into Other Bookmarks because
     /// the folder held more than the most-recently-accessed 20.
     let recentFolderEvictions: [RecentFolderMove]
+    /// Final URL contents of Recent, in the order that will be applied.
+    var recentFolderItems: [RecentFolderItem] = []
     /// The standalone Recent action sorted the Recent folder itself, even
     /// when no bookmarks moved into or out of it.
     var recentFolderReordered = false
@@ -95,6 +104,15 @@ struct FormatPlan: Sendable {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return recentFolderEvictions }
         return recentFolderEvictions.filter {
+            $0.title.localizedCaseInsensitiveContains(query)
+                || $0.url.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    func recentFolderItems(matching query: String) -> [RecentFolderItem] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return recentFolderItems }
+        return recentFolderItems.filter {
             $0.title.localizedCaseInsensitiveContains(query)
                 || $0.url.localizedCaseInsensitiveContains(query)
         }
@@ -204,6 +222,14 @@ nonisolated enum BookmarkTreeFormatter {
         )
         let finalRecentOrder = recentFolder.children.compactMap { $0.raw["id"] as? String }
         let recentFolderReordered = originalRecentOrder != finalRecentOrder
+        let recentFolderItems = recentFolder.children.compactMap { node -> RecentFolderItem? in
+            guard node.kind == .url else { return nil }
+            return RecentFolderItem(
+                title: node.title,
+                url: node.url ?? "",
+                lastOpenedAt: node.normalizedURL.flatMap { recentVisits[$0] }
+            )
+        }
 
         var totalBookmarks = 0
         var totalFolders = 0
@@ -222,6 +248,7 @@ nonisolated enum BookmarkTreeFormatter {
             reorderedFolderCount: 0,
             recentFolderAdditions: additions,
             recentFolderEvictions: evictions,
+            recentFolderItems: recentFolderItems,
             recentFolderReordered: recentFolderReordered,
             totalBookmarks: totalBookmarks,
             totalFolders: max(0, totalFolders - trees.count)
