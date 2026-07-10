@@ -227,7 +227,8 @@ final class ExtensionFormatStore: ObservableObject {
             if let generator {
                 let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
                     trees: trees,
-                    recentVisits: recentVisits
+                    recentVisits: recentVisits,
+                    rules: rules
                 )
                 titleOverrides = try await AITitleRewriter(generate: generator).rewriteTitles(
                     candidates: candidates,

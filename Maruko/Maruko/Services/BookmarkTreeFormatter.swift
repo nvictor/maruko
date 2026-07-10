@@ -344,12 +344,14 @@ nonisolated enum BookmarkTreeFormatter {
     }
 
     /// Bookmarks eligible for the AI title pass: url nodes whose normalized
-    /// URL appears in `recentVisits`, in depth-first order. Candidates are
+    /// URL appears in `recentVisits` and no deterministic rewrite rule applies,
+    /// in depth-first order. Candidates are
     /// keyed by `raw["guid"]`. The extension adapter synthesizes
     /// `guid = <chrome node id>` since chrome.bookmarks has no guid field.
     static func recentBookmarkCandidates(
         trees: [(rootKey: String, node: BookmarkNode)],
-        recentVisits: [String: Date]
+        recentVisits: [String: Date],
+        rules: [RewriteRuleSnapshot] = []
     ) -> [AIRewriteCandidate] {
         guard !recentVisits.isEmpty else { return [] }
         var candidates: [AIRewriteCandidate] = []
@@ -360,6 +362,11 @@ nonisolated enum BookmarkTreeFormatter {
                !node.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                let normalized = node.normalizedURL,
                recentVisits[normalized] != nil,
+               BookmarkRewriteEngine.rewrite(
+                   title: node.title,
+                   url: node.url ?? "",
+                   snapshots: rules
+               ) == node.title,
                let guid = node.raw["guid"] as? String {
                 candidates.append(
                     AIRewriteCandidate(guid: guid, title: node.title, url: node.url ?? "")

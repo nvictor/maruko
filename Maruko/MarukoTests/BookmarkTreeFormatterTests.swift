@@ -315,6 +315,35 @@ struct BookmarkTreeFormatterTests {
         #expect(candidates.map(\.title) == ["Article Notes"])
     }
 
+    @Test func recentBookmarkCandidatesSkipDeterministicallyRewrittenBookmarks() {
+        let github = BookmarkNode(raw: [
+            "type": "url",
+            "name": "An Article-Like GitHub Repository Title",
+            "guid": "github-repo",
+            "url": "https://github.com/nvictor/maruko",
+        ])!
+        let rule = RewriteRuleSnapshot(
+            id: UUID(),
+            name: "GitHub Repo Title",
+            isEnabled: true,
+            order: 0,
+            kind: .regexMatchReplace,
+            matchField: .url,
+            pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
+            replacementTemplate: "github $1/$2",
+            isCaseSensitive: false,
+            createdAt: Date()
+        )
+
+        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
+            trees: [(rootKey: "other", node: github)],
+            recentVisits: ["https://github.com/nvictor/maruko": Date()],
+            rules: [rule]
+        )
+
+        #expect(candidates.isEmpty)
+    }
+
     @Test func planFilterMatchesTitleAndURLCaseInsensitively() {
         let plan = FormatPlan(
             duplicates: [

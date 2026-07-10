@@ -66,15 +66,13 @@ enum BookmarkRewriteEngine {
     /// Applies the regex rules only. `.aiPrompt` rules run in a separate
     /// async pass (`AITitleRewriter`).
     nonisolated static func rewrite(title: String, url: String, snapshots: [RewriteRuleSnapshot]) -> String {
-        var rewrittenTitle = title
-
         for rule in sortedSnapshots(snapshots) where rule.isEnabled && rule.kind == .regexMatchReplace {
-            if let rewritten = apply(rule: rule, currentTitle: rewrittenTitle, url: url) {
-                rewrittenTitle = rewritten
+            if let rewritten = apply(rule: rule, currentTitle: title, url: url) {
+                return rewritten
             }
         }
 
-        return rewrittenTitle
+        return title
     }
 
     /// The combined natural-language instructions of the enabled AI rules, in

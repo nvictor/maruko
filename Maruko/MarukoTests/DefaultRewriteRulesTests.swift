@@ -9,6 +9,26 @@ struct DefaultRewriteRulesTests {
         BookmarkRewriteEngine.rewrite(title: title, url: url, snapshots: snapshots)
     }
 
+    @Test func firstMatchingDeterministicRuleStopsFurtherRewrites() {
+        let now = Date()
+        let rules = [
+            RewriteRuleSnapshot(
+                id: UUID(), name: "First", isEnabled: true, order: 0,
+                kind: .regexMatchReplace, matchField: .title,
+                pattern: "Original", replacementTemplate: "First Result",
+                isCaseSensitive: true, createdAt: now
+            ),
+            RewriteRuleSnapshot(
+                id: UUID(), name: "Second", isEnabled: true, order: 1,
+                kind: .regexMatchReplace, matchField: .title,
+                pattern: "First Result", replacementTemplate: "Second Result",
+                isCaseSensitive: true, createdAt: now
+            ),
+        ]
+
+        #expect(BookmarkRewriteEngine.rewrite(title: "Original", url: "", snapshots: rules) == "First Result")
+    }
+
     @Test func defaultRulesIncludeExpectedNames() {
         let names = BookmarkRewriteEngine.makeDefaultRules().map(\.name)
         #expect(names == [
