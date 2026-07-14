@@ -156,8 +156,12 @@ nonisolated enum BookmarkTreeFormatter {
     ) -> FormatPlan {
         let roots = trees.map(\.node)
         let duplicates = options.removeDuplicates ? removeDuplicates(in: roots) : []
-        let titleChanges = options.rewriteTitles
-            ? rewriteTitles(in: roots, rules: rules, titleOverrides: titleOverrides)
+        let titleChanges = options.rewriteTitles || !titleOverrides.isEmpty
+            ? rewriteTitles(
+                in: roots,
+                rules: options.rewriteTitles ? rules : [],
+                titleOverrides: titleOverrides
+            )
             : []
 
         // "Recent" folder curation is a separate, user-triggered action
@@ -295,10 +299,9 @@ nonisolated enum BookmarkTreeFormatter {
         return removals
     }
 
-    /// Applies the regex rules to every bookmark, then `titleOverrides`
-    /// (Chromium node guid → new title, produced by the async AI pass). A
-    /// bookmark touched by both records one change from its original title to
-    /// the final one; the override wins.
+    /// Applies fetched webpage titles first, then regex rules. A bookmark
+    /// touched by both records one change from its original title to the final
+    /// one. Overrides are keyed by the Chrome bookmark node id.
     static func rewriteTitles(
         in roots: [BookmarkNode],
         rules: [RewriteRuleSnapshot],
@@ -311,14 +314,13 @@ nonisolated enum BookmarkTreeFormatter {
             for child in folder.children {
                 switch child.kind {
                 case .url:
-                    var rewritten = BookmarkRewriteEngine.rewrite(
-                        title: child.title,
+                    let nodeID = child.raw["id"] as? String
+                    let refreshed = nodeID.flatMap { titleOverrides[$0] } ?? child.title
+                    let rewritten = BookmarkRewriteEngine.rewrite(
+                        title: refreshed,
                         url: child.url ?? "",
                         snapshots: rules
                     )
-                    if let guid = child.raw["guid"] as? String, let override = titleOverrides[guid] {
-                        rewritten = override
-                    }
                     if rewritten != child.title {
                         changes.append(
                             TitleChange(
@@ -343,44 +345,18 @@ nonisolated enum BookmarkTreeFormatter {
         return changes
     }
 
-    /// Bookmarks eligible for the AI title pass: url nodes whose normalized
-    /// URL appears in `recentVisits` and no deterministic rewrite rule applies,
-    /// in depth-first order. Candidates are
-    /// keyed by `raw["guid"]`. The extension adapter synthesizes
-    /// `guid = <chrome node id>` since chrome.bookmarks has no guid field.
-    static func recentBookmarkCandidates(
+    /// The first direct URL children currently in the preferred Recent folder.
+    static func webpageTitleCandidates(
         trees: [(rootKey: String, node: BookmarkNode)],
-        recentVisits: [String: Date],
-        rules: [RewriteRuleSnapshot] = []
-    ) -> [AIRewriteCandidate] {
-        guard !recentVisits.isEmpty else { return [] }
-        var candidates: [AIRewriteCandidate] = []
-
-        func walk(_ node: BookmarkNode, rootKey: String, depth: Int) {
-            if node.kind == .url,
-               !(rootKey == "bookmark_bar" && depth == 1),
-               !node.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               let normalized = node.normalizedURL,
-               recentVisits[normalized] != nil,
-               BookmarkRewriteEngine.rewrite(
-                   title: node.title,
-                   url: node.url ?? "",
-                   snapshots: rules
-               ) == node.title,
-               let guid = node.raw["guid"] as? String {
-                candidates.append(
-                    AIRewriteCandidate(guid: guid, title: node.title, url: node.url ?? "")
-                )
-            }
-            for child in node.children {
-                walk(child, rootKey: rootKey, depth: depth + 1)
-            }
-        }
-
-        for (rootKey, node) in trees {
-            walk(node, rootKey: rootKey, depth: 0)
-        }
-        return candidates
+        limit: Int = 20
+    ) -> [WebpageTitleCandidate] {
+        guard limit > 0, let recent = findRecentFolder(in: trees) else { return [] }
+        return recent.children.lazy.compactMap { node in
+            guard node.kind == .url,
+                  let nodeID = node.raw["id"] as? String,
+                  let url = node.url else { return nil }
+            return WebpageTitleCandidate(nodeID: nodeID, url: url)
+        }.prefix(limit).map { $0 }
     }
 
     /// Moves bookmarks that appear in `recentVisits` (normalized URL → last

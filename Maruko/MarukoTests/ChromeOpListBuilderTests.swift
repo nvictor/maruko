@@ -62,7 +62,6 @@ struct ChromeOpListBuilderTests {
             name: "News",
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .title,
             pattern: "^News$",
             replacementTemplate: "Hacker News",

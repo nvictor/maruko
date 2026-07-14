@@ -104,9 +104,8 @@ nonisolated enum ChromeBookmarkTreeAdapter {
     }
 
     /// Synthesizes the Bookmarks-file dictionary shape `BookmarkNode(raw:)`
-    /// expects. `guid` is deliberately set to the chrome node id: the API
-    /// exposes no guid, and the AI title pass keys candidates and overrides
-    /// off `raw["guid"]`.
+    /// expects. `guid` is deliberately set to the Chrome node id because the
+    /// API does not expose a separate guid.
     private static func rawDictionary(for node: ChromeBookmarkNode) -> [String: Any] {
         var raw: [String: Any] = [
             "id": node.id,

@@ -21,7 +21,7 @@ The pairing code is `port-token`: the extension only talks to `127.0.0.1` and Ma
 
 1. Open Maruko and select **Chrome Extension** in the sidebar (this starts the local listener).
 2. In Chrome, click the Maruko icon → **Send Bookmarks**. The extension sends the live bookmark tree plus recent history.
-3. Maruko analyzes (rewrite rules, duplicates, recency. AI title rules run on-device as usual) and shows the preview.
+3. Maruko analyzes rewrite rules, duplicates, recency, and optional webpage-title refreshes, then shows the preview.
 4. Click **Apply via Extension** in Maruko and confirm.
 5. The extension picks the changes up on its next poll and applies them. **Keep the popup open while it applies**; if you closed it, click the Maruko icon again and it resumes.
 

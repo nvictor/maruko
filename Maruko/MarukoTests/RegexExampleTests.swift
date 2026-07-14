@@ -9,7 +9,6 @@ struct RegexExampleTests {
             name: example.name,
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: example.matchField,
             pattern: example.pattern,
             replacementTemplate: example.replacement,
@@ -44,7 +43,6 @@ struct RegexExampleTests {
             name: "Delete match",
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .title,
             pattern: #"\s*\(draft\)"#,
             replacementTemplate: "",
@@ -61,16 +59,14 @@ struct RegexExampleTests {
 
     @Test func previewSnapshotRoundTripsDraftFields() {
         var draft = RewriteRuleDraft.default
-        draft.kind = .aiPrompt
-        draft.name = "AI Rule"
-        draft.replacementTemplate = "Use sentence case."
+        draft.name = "Title cleanup"
+        draft.replacementTemplate = "Clean title"
         draft.matchField = .url
         draft.isCaseSensitive = true
 
         let snapshot = draft.previewSnapshot()
-        #expect(snapshot.kind == .aiPrompt)
-        #expect(snapshot.name == "AI Rule")
-        #expect(snapshot.replacementTemplate == "Use sentence case.")
+        #expect(snapshot.name == "Title cleanup")
+        #expect(snapshot.replacementTemplate == "Clean title")
         #expect(snapshot.matchField == .url)
         #expect(snapshot.isCaseSensitive)
         #expect(snapshot.isEnabled)

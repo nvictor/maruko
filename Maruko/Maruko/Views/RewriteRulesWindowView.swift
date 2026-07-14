@@ -68,7 +68,7 @@ struct RewriteRulesWindowView: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        Text(rule.kind == .aiPrompt ? "AI" : "Regex")
+                        Text("Regex")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)

@@ -14,34 +14,6 @@ enum RewriteValidationResult {
 enum BookmarkRewriteEngine {
     nonisolated(unsafe) private static var regexCache: [String: NSRegularExpression] = [:]
     nonisolated private static let regexCacheLock = NSLock()
-    nonisolated static let defaultArticleTitleRewritePrompt = """
-        Only rewrite titles that clearly look like article or blog post titles.
-
-        Skip if the title is only a domain, site name, product name, app name, repo name, profile name, documentation section, homepage, or navigation label.
-
-        Skip if the title has fewer than 4 words, unless it contains a clear article headline phrase.
-
-        For matching titles, rewrite using proper title casing, then add the prefix Article, followed by a colon and one space, before the rewritten title.
-
-        Do not rewrite based on the URL alone. The title itself must look like an article headline.
-        """
-
-    nonisolated static let defaultWikipediaTitleRewritePrompt = """
-        Only apply this rule to Wikipedia articles. Pages on wikipedia.org or
-        any subdomain of it, such as en.wikipedia.org. You can tell from the
-        URL shown next to the title. Skip every bookmark whose URL is not on
-        a Wikipedia domain. That covers everything else, including ordinary
-        articles or blog posts, which a separate rule already handles.
-
-        For a matching bookmark, rewrite the title using proper title casing,
-        drop any trailing hyphen-Wikipedia suffix added by the original page
-        title. For example, turn Albert Einstein - Wikipedia into Albert
-        Einstein. And then add the prefix Wikipedia, followed by a colon and
-        one space, before the cleaned title.
-
-        Do not rewrite based on the title alone if the URL is not a Wikipedia
-        domain.
-        """
 
     static func sortedRules(_ rules: [RewriteRule]) -> [RewriteRule] {
         rules.sorted {
@@ -63,26 +35,14 @@ enum BookmarkRewriteEngine {
         }
     }
 
-    /// Applies the regex rules only. `.aiPrompt` rules run in a separate
-    /// async pass (`AITitleRewriter`).
     nonisolated static func rewrite(title: String, url: String, snapshots: [RewriteRuleSnapshot]) -> String {
-        for rule in sortedSnapshots(snapshots) where rule.isEnabled && rule.kind == .regexMatchReplace {
+        for rule in sortedSnapshots(snapshots) where rule.isEnabled {
             if let rewritten = apply(rule: rule, currentTitle: title, url: url) {
                 return rewritten
             }
         }
 
         return title
-    }
-
-    /// The combined natural-language instructions of the enabled AI rules, in
-    /// rule order. Empty when no AI rule is enabled.
-    nonisolated static func combinedAIInstructions(from snapshots: [RewriteRuleSnapshot]) -> String {
-        sortedSnapshots(snapshots)
-            .filter { $0.isEnabled && $0.kind == .aiPrompt }
-            .map { $0.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
     }
 
     static func validate(rule: RewriteRule) -> RewriteValidationResult {
@@ -92,33 +52,20 @@ enum BookmarkRewriteEngine {
     nonisolated static func validate(snapshot: RewriteRuleSnapshot, name: String) -> RewriteValidationResult {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let pattern = snapshot.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
-        let replacement = snapshot.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
-
         if trimmedName.isEmpty {
             return .invalid(message: "Rule name cannot be empty.")
         }
 
-        switch snapshot.kind {
-        case .aiPrompt:
-            if replacement.isEmpty {
-                return .invalid(message: "Instructions cannot be empty.")
-            }
-            return .valid
-
-        case .regexMatchReplace:
-            if pattern.isEmpty {
-                return .invalid(message: "Pattern cannot be empty.")
-            }
-            // An empty replacement is allowed: it deletes the matched text.
-
-            do {
-                _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)
-            } catch {
-                return .invalid(message: "Invalid regex: \(error.localizedDescription)")
-            }
-
-            return .valid
+        if pattern.isEmpty {
+            return .invalid(message: "Pattern cannot be empty.")
         }
+        // An empty replacement is allowed: it deletes the matched text.
+        do {
+            _ = try regex(for: pattern, caseSensitive: snapshot.isCaseSensitive)
+        } catch {
+            return .invalid(message: "Invalid regex: \(error.localizedDescription)")
+        }
+        return .valid
     }
 
     static func validate(rules: [RewriteRule]) -> [RewriteValidationIssue] {
@@ -146,19 +93,9 @@ enum BookmarkRewriteEngine {
                 isCaseSensitive: false
             ),
             RewriteRule(
-                name: "Article Title Rewrite",
-                isEnabled: true,
-                order: 1,
-                kind: .aiPrompt,
-                matchField: .title,
-                pattern: "",
-                replacementTemplate: Self.defaultArticleTitleRewritePrompt,
-                isCaseSensitive: false
-            ),
-            RewriteRule(
                 name: "Bitbucket Repo Title",
                 isEnabled: true,
-                order: 2,
+                order: 1,
                 matchField: .url,
                 pattern: #"^https://bitbucket\.org/([^/]+)/([^/?#]+)$"#,
                 replacementTemplate: "bitbucket $1/$2",
@@ -167,7 +104,7 @@ enum BookmarkRewriteEngine {
             RewriteRule(
                 name: "X/Twitter Profile Title",
                 isEnabled: true,
-                order: 3,
+                order: 2,
                 matchField: .url,
                 pattern: #"^https://(?:www\.)?(?:x|twitter)\.com/(?!home$|search$|explore$|notifications$|messages$|settings$|compose$|i$|i/)([A-Za-z0-9_]{1,15})/?$"#,
                 replacementTemplate: "x $1",
@@ -176,20 +113,10 @@ enum BookmarkRewriteEngine {
             RewriteRule(
                 name: "Instagram Profile Title",
                 isEnabled: true,
-                order: 4,
+                order: 3,
                 matchField: .url,
                 pattern: #"^https://(?:www\.)?instagram\.com/(?!explore$|reels$|direct$|accounts$|about$|developer$|legal$)([A-Za-z0-9_.]{1,30})/?$"#,
                 replacementTemplate: "instagram $1",
-                isCaseSensitive: false
-            ),
-            RewriteRule(
-                name: "Wikipedia Article Rewrite",
-                isEnabled: true,
-                order: 5,
-                kind: .aiPrompt,
-                matchField: .title,
-                pattern: "",
-                replacementTemplate: Self.defaultWikipediaTitleRewritePrompt,
                 isCaseSensitive: false
             )
         ]

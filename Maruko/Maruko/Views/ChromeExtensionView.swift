@@ -22,11 +22,6 @@ struct ChromeExtensionView: View {
                     Divider()
                 }
 
-                if let aiNotice = extensionStore.aiNotice {
-                    banner(aiNotice, systemImage: "sparkles", tint: .yellow)
-                    Divider()
-                }
-
                 setupSection
                 Divider()
 
@@ -41,6 +36,7 @@ struct ChromeExtensionView: View {
                 Menu {
                     Toggle("Remove Duplicates", isOn: $extensionStore.formatOptions.removeDuplicates)
                     Toggle("Rewrite Titles", isOn: $extensionStore.formatOptions.rewriteTitles)
+                    Toggle("Refresh Titles from Webpages", isOn: $extensionStore.formatOptions.refreshTitlesFromWebpages)
                     Toggle("Move Recently Opened to Top", isOn: $extensionStore.formatOptions.moveRecentToTop)
                     Picker("Recently Opened Means", selection: $extensionStore.formatOptions.recencyWindowDays) {
                         ForEach(FormatOptions.recencyWindowChoices, id: \.self) { days in
@@ -185,10 +181,10 @@ struct ChromeExtensionView: View {
             Spacer()
         case .analyzing:
             Spacer()
-            if let progress = extensionStore.aiProgress, progress.total > 0 {
+            if let progress = extensionStore.titleRefreshProgress, progress.total > 0 {
                 VStack(spacing: 12) {
                     ProgressView(value: Double(progress.processed), total: Double(progress.total)) {
-                        Text("Rewriting titles with Apple Intelligence. \(progress.processed) of \(progress.total)…")
+                        Text("Refreshing titles from webpages. \(progress.processed) of \(progress.total)…")
                     }
                     .frame(maxWidth: 420)
 

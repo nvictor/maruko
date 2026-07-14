@@ -12,19 +12,7 @@ struct RewriteRuleFormView: View {
         Form {
             TextField("Name", text: $draft.name)
 
-            Picker("Kind", selection: $draft.kind) {
-                ForEach(RewriteRuleKind.allCases, id: \.self) { kind in
-                    Text(kind.displayName).tag(kind)
-                }
-            }
-            .pickerStyle(.segmented)
-
-            switch draft.kind {
-            case .regexMatchReplace:
-                regexFields
-            case .aiPrompt:
-                aiFields
-            }
+            regexFields
 
             Toggle("Enabled", isOn: $draft.isEnabled)
         }
@@ -135,21 +123,5 @@ struct RewriteRuleFormView: View {
         }
         sampleTitle = example.sampleTitle
         sampleURL = example.sampleURL
-    }
-
-    // MARK: - AI kind
-
-    @ViewBuilder
-    private var aiFields: some View {
-        Section {
-            TextEditor(text: $draft.replacementTemplate)
-                .font(.body)
-                .frame(minHeight: 96)
-        } header: {
-            Text("Instructions")
-        } footer: {
-            Text("Plain-language rules for the on-device model, e.g. \"Remove trailing site names and use sentence case.\" Applies only to recently opened bookmarks.")
-                .foregroundStyle(.secondary)
-        }
     }
 }

@@ -14,13 +14,13 @@ struct DefaultRewriteRulesTests {
         let rules = [
             RewriteRuleSnapshot(
                 id: UUID(), name: "First", isEnabled: true, order: 0,
-                kind: .regexMatchReplace, matchField: .title,
+                matchField: .title,
                 pattern: "Original", replacementTemplate: "First Result",
                 isCaseSensitive: true, createdAt: now
             ),
             RewriteRuleSnapshot(
                 id: UUID(), name: "Second", isEnabled: true, order: 1,
-                kind: .regexMatchReplace, matchField: .title,
+                matchField: .title,
                 pattern: "First Result", replacementTemplate: "Second Result",
                 isCaseSensitive: true, createdAt: now
             ),
@@ -33,11 +33,9 @@ struct DefaultRewriteRulesTests {
         let names = BookmarkRewriteEngine.makeDefaultRules().map(\.name)
         #expect(names == [
             "GitHub Repo Title",
-            "Article Title Rewrite",
             "Bitbucket Repo Title",
             "X/Twitter Profile Title",
             "Instagram Profile Title",
-            "Wikipedia Article Rewrite",
         ])
     }
 
@@ -95,14 +93,4 @@ struct DefaultRewriteRulesTests {
         }
     }
 
-    @Test func wikipediaPromptEligibilityAllowsRealWikipediaTitles() {
-        let combined = BookmarkRewriteEngine.combinedAIInstructions(from: snapshots)
-        let eligibility = AIRewriteEligibility(instructions: combined)
-        let candidate = AIRewriteCandidate(
-            guid: "einstein",
-            title: "Albert Einstein - Wikipedia",
-            url: "https://en.wikipedia.org/wiki/Albert_Einstein"
-        )
-        #expect(eligibility.allows(candidate))
-    }
 }

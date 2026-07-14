@@ -7,18 +7,6 @@ enum RewriteMatchField: String, CaseIterable, Codable {
     case titleOrURL
 }
 
-nonisolated enum RewriteRuleKind: String, CaseIterable, Codable, Sendable {
-    case regexMatchReplace
-    case aiPrompt
-
-    var displayName: String {
-        switch self {
-        case .regexMatchReplace: "Regex"
-        case .aiPrompt: "AI (Apple Intelligence)"
-        }
-    }
-}
-
 /// Sendable value copy of a `RewriteRule`, taken on the main actor so the
 /// rewrite engine can run off-main without touching SwiftData objects.
 struct RewriteRuleSnapshot: Sendable {
@@ -26,10 +14,8 @@ struct RewriteRuleSnapshot: Sendable {
     let name: String
     let isEnabled: Bool
     let order: Int
-    let kind: RewriteRuleKind
     let matchField: RewriteMatchField
     let pattern: String
-    /// For `.aiPrompt` rules this holds the natural-language instructions.
     let replacementTemplate: String
     let isCaseSensitive: Bool
     let createdAt: Date
@@ -41,6 +27,8 @@ final class RewriteRule {
     var name: String
     var isEnabled: Bool
     var order: Int
+    /// Retained only so existing SwiftData stores can be cleaned up without
+    /// breaking their schema. New and surviving rules are always regex rules.
     var kindRaw: String
     var matchFieldRaw: String
     var pattern: String
@@ -54,18 +42,12 @@ final class RewriteRule {
         set { matchFieldRaw = newValue.rawValue }
     }
 
-    var kind: RewriteRuleKind {
-        get { RewriteRuleKind(rawValue: kindRaw) ?? .regexMatchReplace }
-        set { kindRaw = newValue.rawValue }
-    }
-
     var snapshot: RewriteRuleSnapshot {
         RewriteRuleSnapshot(
             id: id,
             name: name,
             isEnabled: isEnabled,
             order: order,
-            kind: kind,
             matchField: matchField,
             pattern: pattern,
             replacementTemplate: replacementTemplate,
@@ -79,7 +61,6 @@ final class RewriteRule {
         name: String,
         isEnabled: Bool = true,
         order: Int,
-        kind: RewriteRuleKind = .regexMatchReplace,
         matchField: RewriteMatchField,
         pattern: String,
         replacementTemplate: String,
@@ -91,7 +72,7 @@ final class RewriteRule {
         self.name = name
         self.isEnabled = isEnabled
         self.order = order
-        self.kindRaw = kind.rawValue
+        self.kindRaw = "regexMatchReplace"
         self.matchFieldRaw = matchField.rawValue
         self.pattern = pattern
         self.replacementTemplate = replacementTemplate

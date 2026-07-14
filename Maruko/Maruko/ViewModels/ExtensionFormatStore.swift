@@ -32,7 +32,7 @@ final class ExtensionFormatStore: ObservableObject {
         case failed
     }
 
-    struct AIProgress: Equatable {
+    struct TitleRefreshProgress: Equatable {
         var processed: Int
         var total: Int
     }
@@ -42,8 +42,7 @@ final class ExtensionFormatStore: ObservableObject {
     @Published private(set) var extensionConnected = false
     @Published private(set) var phase: Phase = .waitingForSession
     @Published private(set) var plan: FormatPlan?
-    @Published private(set) var aiProgress: AIProgress?
-    @Published private(set) var aiNotice: String?
+    @Published private(set) var titleRefreshProgress: TitleRefreshProgress?
     @Published private(set) var resultSummary: String?
     @Published private(set) var installState: ExtensionInstaller.ExportState = .notExported
     @Published var statusMessage: String?
@@ -66,6 +65,7 @@ final class ExtensionFormatStore: ObservableObject {
     private let installer = ExtensionInstaller()
     private let snapshotWriter = ExtensionSnapshotWriter()
     private let logger = Logger(subsystem: "com.mellowfleet.Maruko", category: "ExtensionFormat")
+    private let webpageTitleRefresher: WebpageTitleRefresher
 
     private var server: ExtensionServer?
     private var sessionStore: ExtensionSessionStore?
@@ -80,7 +80,8 @@ final class ExtensionFormatStore: ObservableObject {
     /// editing is shared with the rest of the app.
     private var rulesProvider: () throws -> [RewriteRuleSnapshot] = { [] }
 
-    init() {
+    init(webpageTitleRefresher: WebpageTitleRefresher = WebpageTitleRefresher()) {
+        self.webpageTitleRefresher = webpageTitleRefresher
         extensionConnected = UserDefaults.standard.bool(forKey: Self.hasPairedKey)
         if let data = UserDefaults.standard.data(forKey: Self.formatOptionsKey),
            let options = try? JSONDecoder().decode(FormatOptions.self, from: data) {
@@ -182,8 +183,7 @@ final class ExtensionFormatStore: ObservableObject {
         resultSummary = nil
         statusMessage = nil
         errorMessage = nil
-        aiNotice = nil
-        aiProgress = nil
+        titleRefreshProgress = nil
         phase = .analyzing
 
         let rules: [RewriteRuleSnapshot]
@@ -195,23 +195,12 @@ final class ExtensionFormatStore: ObservableObject {
         }
         let options = formatOptions
 
-        // AI rules run only when the on-device model is usable; otherwise
-        // analysis proceeds regex-only with a notice.
-        var aiGenerator: AITitleRewriter.Generator?
-        if options.rewriteTitles, rules.contains(where: { $0.isEnabled && $0.kind == .aiPrompt }) {
-            if let notice = FoundationModelsTitleGenerator.availabilityNotice() {
-                aiNotice = notice
-            } else {
-                aiGenerator = FoundationModelsTitleGenerator.generate
-            }
-        }
-        let generator = aiGenerator
-
         let progressHandler: @Sendable (Int, Int) -> Void = { processed, total in
             Task { @MainActor [weak self] in
-                self?.aiProgress = AIProgress(processed: processed, total: total)
+                self?.titleRefreshProgress = TitleRefreshProgress(processed: processed, total: total)
             }
         }
+        let webpageTitleRefresher = self.webpageTitleRefresher
 
         let work = Task.detached(priority: .userInitiated) { () -> (FormatPlan, BookmarkOps) in
             let recentVisits = ExtensionHistoryMapper.recentVisits(
@@ -224,16 +213,10 @@ final class ExtensionFormatStore: ObservableObject {
             let trees = rooted.map { (rootKey: $0.rootKey, node: $0.node) }
 
             var titleOverrides: [String: String] = [:]
-            if let generator {
-                let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
-                    trees: trees,
-                    recentVisits: recentVisits,
-                    rules: rules
-                )
-                titleOverrides = try await AITitleRewriter(generate: generator).rewriteTitles(
+            if options.refreshTitlesFromWebpages {
+                let candidates = BookmarkTreeFormatter.webpageTitleCandidates(trees: trees)
+                titleOverrides = try await webpageTitleRefresher.refresh(
                     candidates: candidates,
-                    instructions: BookmarkRewriteEngine.combinedAIInstructions(from: rules),
-                    cache: AIRewriteCache.defaultCache(),
                     progress: progressHandler
                 )
             }
@@ -256,7 +239,7 @@ final class ExtensionFormatStore: ObservableObject {
 
         Task {
             defer {
-                aiProgress = nil
+                titleRefreshProgress = nil
                 activeAnalysis = nil
             }
             do {
@@ -269,7 +252,7 @@ final class ExtensionFormatStore: ObservableObject {
                 logger.info("Analyzed extension session: \(plan.totalBookmarks) bookmarks, \(plan.duplicates.count) duplicates, \(plan.titleChanges.count) title changes")
             } catch is CancellationError {
                 guard currentSessionId == sessionId else { return }
-                statusMessage = "Analysis cancelled. Already-processed titles are cached for next time."
+                statusMessage = "Analysis cancelled."
                 sessionStore?.cancel(sessionId: sessionId)
                 phase = .waitingForSession
             } catch {

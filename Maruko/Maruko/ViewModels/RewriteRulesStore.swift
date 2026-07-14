@@ -16,6 +16,7 @@ final class RewriteRulesStore: ObservableObject {
         modelContext = context
 
         do {
+            try removeObsoleteAIRules()
             try seedDefaultRulesIfNeeded()
             try migrateLegacyRulesIfNeeded()
             try addMissingDefaultRulesIfNeeded()
@@ -23,6 +24,22 @@ final class RewriteRulesStore: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Removes records created by every shipped AI-rule representation.
+    /// `kindRaw` remains in the persisted model for lightweight-store
+    /// compatibility, but is no longer part of the app's rule interface.
+    func removeObsoleteAIRules() throws {
+        guard let context = modelContext else { return }
+        let rules = try context.fetch(FetchDescriptor<RewriteRule>())
+        let obsoleteKinds = Set(["aiPrompt", "containsTextTitleCaseWithPrefix"])
+        let obsoleteNames = Set(["Article Title Rewrite", "Article Title Prefix", "Wikipedia Article Rewrite"])
+        let obsolete = rules.filter {
+            obsoleteKinds.contains($0.kindRaw) || obsoleteNames.contains($0.name)
+        }
+        guard !obsolete.isEmpty else { return }
+        for rule in obsolete { context.delete(rule) }
+        try context.save()
     }
 
     /// Sendable copies of the enabled, valid rules for off-main formatting.
@@ -76,37 +93,6 @@ final class RewriteRulesStore: ObservableObject {
             // exact old default, so a user's own edits are left alone.
             if rule.name == "GitHub Repo Title" && rule.replacementTemplate == "github > $1 > $2" {
                 rule.replacementTemplate = "github $1/$2"
-                rule.updatedAt = Date()
-                changed = true
-            }
-
-            // The shipped Article prompt's own output-prefix quote ("Article: ")
-            // was accidentally parsed by AIRewriteEligibility as a required
-            // input substring, silently disabling the rule for virtually every
-            // real title. Reset any rule still carrying that exact old prompt
-            // to the corrected (quote-free) default. A user's own edits are
-            // left alone.
-            if rule.name == "Article Title Rewrite" && rule.replacementTemplate == Self.legacyArticlePromptWithAccidentalQuote {
-                migrateToDefaultArticleRewrite(rule)
-                rule.updatedAt = Date()
-                changed = true
-            }
-
-            if legacyKind == "containsTextTitleCaseWithPrefix" {
-                migrateToDefaultArticleRewrite(rule)
-                rule.updatedAt = Date()
-                changed = true
-                continue
-            }
-
-            if rule.name == "Article Title Prefix" && rule.replacementTemplate == "Article $1" {
-                migrateToDefaultArticleRewrite(rule)
-                rule.updatedAt = Date()
-                changed = true
-            }
-
-            if rule.name == "Article Title Prefix" && rule.replacementTemplate == "Article ${titlecase:1}" {
-                migrateToDefaultArticleRewrite(rule)
                 rule.updatedAt = Date()
                 changed = true
             }
@@ -172,7 +158,6 @@ final class RewriteRulesStore: ObservableObject {
             name: name,
             isEnabled: draft.isEnabled,
             order: draft.order,
-            kind: draft.kind,
             matchField: draft.matchField,
             pattern: pattern,
             replacementTemplate: template,
@@ -202,7 +187,6 @@ final class RewriteRulesStore: ObservableObject {
         rule.name = name
         rule.isEnabled = draft.isEnabled
         rule.order = draft.order
-        rule.kind = draft.kind
         rule.matchField = draft.matchField
         rule.pattern = draft.pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         rule.replacementTemplate = draft.replacementTemplate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -274,27 +258,4 @@ final class RewriteRulesStore: ObservableObject {
         try persistRuleOrder(ordered)
     }
 
-    private func migrateToDefaultArticleRewrite(_ rule: RewriteRule) {
-        rule.name = "Article Title Rewrite"
-        rule.kindRaw = RewriteRuleKind.aiPrompt.rawValue
-        rule.matchField = .title
-        rule.pattern = ""
-        rule.replacementTemplate = BookmarkRewriteEngine.defaultArticleTitleRewritePrompt
-        rule.isCaseSensitive = false
-    }
-
-    /// The exact `defaultArticleTitleRewritePrompt` text as originally
-    /// shipped, before its "Prefix exactly with “Article: ”." sentence was
-    /// reworded to drop the accidental quoted phrase.
-    private static let legacyArticlePromptWithAccidentalQuote = """
-        Only rewrite titles that clearly look like article or blog post titles.
-
-        Skip if the title is only a domain, site name, product name, app name, repo name, profile name, documentation section, homepage, or navigation label.
-
-        Skip if the title has fewer than 4 words, unless it contains a clear article headline phrase.
-
-        For matching titles, rewrite using proper title casing. Prefix exactly with “Article: ”.
-
-        Do not rewrite based on the URL alone. The title itself must look like an article headline.
-        """
 }

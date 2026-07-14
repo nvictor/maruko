@@ -66,7 +66,6 @@ struct BookmarkTreeFormatterTests {
             name: "GitHub Repo Title",
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .url,
             pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
             replacementTemplate: "github > $1 > $2",
@@ -89,7 +88,6 @@ struct BookmarkTreeFormatterTests {
             name: "Disabled",
             isEnabled: false,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .title,
             pattern: ".*",
             replacementTemplate: "clobbered",
@@ -204,7 +202,6 @@ struct BookmarkTreeFormatterTests {
             name: "GitHub Repo Title",
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .url,
             pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
             replacementTemplate: "github > $1 > $2",
@@ -226,10 +223,10 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.isEmpty)
     }
 
-    @Test func titleOverridesApplyByGuidAndRecordChanges() throws {
-        // chrome-basic: the GitHub bookmark has guid ...000000000007.
+    @Test func titleOverridesApplyByNodeIDAndRecordChanges() throws {
+        // chrome-basic: the GitHub bookmark has Chrome node id 7.
         let trees = try self.trees(fromFixture: "chrome-basic")
-        let overrides = ["00000000-0000-4000-8000-000000000007": "Maruko on GitHub"]
+        let overrides = ["7": "Maruko on GitHub"]
 
         let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], titleOverrides: overrides)
 
@@ -238,21 +235,20 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.titleChanges.first?.newTitle == "Maruko on GitHub")
     }
 
-    @Test func overrideWinsOverRegexRewriteInOneChange() throws {
+    @Test func regexRunsAfterOverrideAndRecordsOneChange() throws {
         let trees = try self.trees(fromFixture: "chrome-basic")
         let regexRule = RewriteRuleSnapshot(
             id: UUID(),
             name: "GitHub Repo Title",
             isEnabled: true,
             order: 0,
-            kind: .regexMatchReplace,
             matchField: .url,
             pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
             replacementTemplate: "github > $1 > $2",
             isCaseSensitive: false,
             createdAt: Date()
         )
-        let overrides = ["00000000-0000-4000-8000-000000000007": "Final Title"]
+        let overrides = ["7": "Final Title"]
 
         let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [regexRule], titleOverrides: overrides)
 
@@ -260,88 +256,7 @@ struct BookmarkTreeFormatterTests {
             plan.titleChanges.first { $0.url == "https://github.com/nvictor/maruko" }
         )
         #expect(change.oldTitle == "GitHub")
-        #expect(change.newTitle == "Final Title")
-    }
-
-    @Test func recentBookmarkCandidatesFilterByRecentVisits() throws {
-        let trees = try self.trees(fromFixture: "chrome-basic")
-        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
-            trees: trees,
-            recentVisits: [
-                "https://example.com/": Date(),
-                "https://github.com/nvictor/maruko": Date(),
-                "https://cafe.example.com/recipes?a=1&b=2": Date(),
-                "https://docs.example.com/guide": Date(),
-            ]
-        )
-
-        // Direct bookmark bar URL items are skipped. Items in subfolders on
-        // the bar, and items outside the bar, remain eligible.
-        #expect(candidates.map(\.title).sorted() == ["Docs", "GitHub"])
-        #expect(candidates.allSatisfy { !$0.guid.isEmpty })
-
-        let none = BookmarkTreeFormatter.recentBookmarkCandidates(trees: trees, recentVisits: [:])
-        #expect(none.isEmpty)
-    }
-
-    @Test func recentBookmarkCandidatesSkipEmptyTitles() {
-        let tree = BookmarkNode(raw: [
-            "type": "folder",
-            "name": "Other Bookmarks",
-            "children": [
-                [
-                    "type": "url",
-                    "name": "",
-                    "guid": "empty-title",
-                    "url": "https://empty.example.com/",
-                ],
-                [
-                    "type": "url",
-                    "name": "Article Notes",
-                    "guid": "article-notes",
-                    "url": "https://article.example.com/",
-                ],
-            ],
-        ])!
-
-        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
-            trees: [(rootKey: "other", node: tree)],
-            recentVisits: [
-                "https://empty.example.com/": Date(),
-                "https://article.example.com/": Date(),
-            ]
-        )
-
-        #expect(candidates.map(\.title) == ["Article Notes"])
-    }
-
-    @Test func recentBookmarkCandidatesSkipDeterministicallyRewrittenBookmarks() {
-        let github = BookmarkNode(raw: [
-            "type": "url",
-            "name": "An Article-Like GitHub Repository Title",
-            "guid": "github-repo",
-            "url": "https://github.com/nvictor/maruko",
-        ])!
-        let rule = RewriteRuleSnapshot(
-            id: UUID(),
-            name: "GitHub Repo Title",
-            isEnabled: true,
-            order: 0,
-            kind: .regexMatchReplace,
-            matchField: .url,
-            pattern: #"^https://github\.com/([^/]+)/([^/?#]+)$"#,
-            replacementTemplate: "github $1/$2",
-            isCaseSensitive: false,
-            createdAt: Date()
-        )
-
-        let candidates = BookmarkTreeFormatter.recentBookmarkCandidates(
-            trees: [(rootKey: "other", node: github)],
-            recentVisits: ["https://github.com/nvictor/maruko": Date()],
-            rules: [rule]
-        )
-
-        #expect(candidates.isEmpty)
+        #expect(change.newTitle == "github > nvictor > maruko")
     }
 
     @Test func planFilterMatchesTitleAndURLCaseInsensitively() {
@@ -491,6 +406,44 @@ struct BookmarkTreeFormatterTests {
             let found = BookmarkTreeFormatter.findRecentFolder(in: [(rootKey: "bookmark_bar", node: bar)])
             #expect(found?.raw["id"] as? String == "10", "expected to match folder named \(name.debugDescription)")
         }
+    }
+
+    @Test func webpageTitleCandidatesUseOnlyFirstTwentyDirectURLsInRecent() {
+        let urls = (1...22).map {
+            rawURL(id: "\($0)", name: "Item \($0)", url: "https://\($0).example.com/")
+        }
+        let recent = rawFolder(id: "10", name: "Recent", children: [
+            rawFolder(id: "nested", name: "Nested", children: [
+                rawURL(id: "nested-url", name: "Nested URL", url: "https://nested.example.com/")
+            ])
+        ] + urls)
+        let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recent]))!
+        let candidates = BookmarkTreeFormatter.webpageTitleCandidates(
+            trees: [(rootKey: "bookmark_bar", node: bar)]
+        )
+
+        #expect(candidates.count == 20)
+        #expect(candidates.map(\.nodeID) == (1...20).map(String.init))
+        #expect(!candidates.contains { $0.nodeID == "nested-url" })
+    }
+
+    @Test func fetchedTitleIsInputToRegexRules() {
+        let root = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [
+            rawURL(id: "page", name: "Old", url: "https://example.com/")
+        ]))!
+        let rule = RewriteRuleSnapshot(
+            id: UUID(), name: "Strip site", isEnabled: true, order: 0,
+            matchField: .title, pattern: #"\s+\|\s+Example$"#,
+            replacementTemplate: "", isCaseSensitive: false, createdAt: Date()
+        )
+
+        let changes = BookmarkTreeFormatter.rewriteTitles(
+            in: [root], rules: [rule], titleOverrides: ["page": "Fresh Title | Example"]
+        )
+
+        #expect(changes.count == 1)
+        #expect(changes[0].oldTitle == "Old")
+        #expect(changes[0].newTitle == "Fresh Title")
     }
 
     @Test func curateRecentFolderSortsByRecencyAndRanksUnvisitedLast() {

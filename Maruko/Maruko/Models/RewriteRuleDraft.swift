@@ -4,10 +4,8 @@ struct RewriteRuleDraft {
     var name: String
     var isEnabled: Bool
     var order: Int
-    var kind: RewriteRuleKind = .regexMatchReplace
     var matchField: RewriteMatchField
     var pattern: String
-    /// For `.aiPrompt` rules this holds the natural-language instructions.
     var replacementTemplate: String
     var isCaseSensitive: Bool
 
@@ -31,7 +29,6 @@ extension RewriteRuleDraft {
             name: name,
             isEnabled: true,
             order: order,
-            kind: kind,
             matchField: matchField,
             pattern: pattern,
             replacementTemplate: replacementTemplate,
@@ -44,7 +41,6 @@ extension RewriteRuleDraft {
         self.name = rule.name
         self.isEnabled = rule.isEnabled
         self.order = rule.order
-        self.kind = rule.kind
         self.matchField = rule.matchField
         self.pattern = rule.pattern
         self.replacementTemplate = rule.replacementTemplate
