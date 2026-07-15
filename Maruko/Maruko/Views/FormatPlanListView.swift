@@ -6,6 +6,9 @@ struct FormatPlanListView: View {
     let filterText: String
     let recencyWindowDays: Int
     let lastFormattedAt: Date?
+    let excludedTitleChangeIDs: Set<UUID>
+    let onToggleTitleChangeExcluded: (TitleChange) -> Void
+    let onSetTitleChangesExcluded: ([TitleChange], Bool) -> Void
 
     var body: some View {
         let duplicates = plan.duplicates(matching: filterText)
@@ -48,17 +51,54 @@ struct FormatPlanListView: View {
             }
 
             if !titleChanges.isEmpty {
-                Section(sectionTitle("Titles to rewrite", shown: titleChanges.count, total: plan.titleChanges.count)) {
+                Section {
                     ForEach(titleChanges) { change in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(change.oldTitle)
-                                .strikethrough()
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Text(change.newTitle)
-                                .lineLimit(1)
+                        HStack(alignment: .top, spacing: 8) {
+                            if change.nodeID != nil {
+                                Toggle(
+                                    "Apply title change",
+                                    isOn: Binding(
+                                        get: { !excludedTitleChangeIDs.contains(change.id) },
+                                        set: { _ in onToggleTitleChangeExcluded(change) }
+                                    )
+                                )
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                            } else {
+                                Image(systemName: "info.circle")
+                                    .foregroundStyle(.secondary)
+                                    .help("This preview item has no Chrome bookmark ID and cannot be applied.")
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(change.oldTitle)
+                                    .strikethrough()
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Text(change.newTitle)
+                                    .lineLimit(1)
+                            }
                         }
                     }
+                } header: {
+                    HStack {
+                        Text(sectionTitle("Titles to rewrite", shown: titleChanges.count, total: plan.titleChanges.count))
+                        let excludedCount = titleChanges.count { excludedTitleChangeIDs.contains($0.id) }
+                        if excludedCount > 0 {
+                            Text("\(excludedCount) unchecked")
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("All") {
+                            onSetTitleChangesExcluded(titleChanges, false)
+                        }
+                        .controlSize(.small)
+                        Button("None") {
+                            onSetTitleChangesExcluded(titleChanges, true)
+                        }
+                        .controlSize(.small)
+                    }
+                    .textCase(nil)
                 }
             }
 

@@ -42,6 +42,7 @@ final class ExtensionFormatStore: ObservableObject {
     @Published private(set) var extensionConnected = false
     @Published private(set) var phase: Phase = .waitingForSession
     @Published private(set) var plan: FormatPlan?
+    @Published private(set) var excludedTitleChangeIDs: Set<UUID> = []
     @Published private(set) var titleRefreshProgress: TitleRefreshProgress?
     @Published private(set) var resultSummary: String?
     @Published private(set) var installState: ExtensionInstaller.ExportState = .notExported
@@ -180,6 +181,7 @@ final class ExtensionFormatStore: ObservableObject {
         lastPayload = payload
         pendingOps = nil
         plan = nil
+        excludedTitleChangeIDs = []
         resultSummary = nil
         statusMessage = nil
         errorMessage = nil
@@ -359,10 +361,39 @@ final class ExtensionFormatStore: ObservableObject {
 
     // MARK: - Confirmation
 
+    var titleChangeApplyCount: Int {
+        plan?.titleChanges.count {
+            $0.nodeID != nil && !excludedTitleChangeIDs.contains($0.id)
+        } ?? 0
+    }
+
+    func setTitleChangeExcluded(_ change: TitleChange, excluded: Bool) {
+        guard change.nodeID != nil else { return }
+        if excluded {
+            excludedTitleChangeIDs.insert(change.id)
+        } else {
+            excludedTitleChangeIDs.remove(change.id)
+        }
+    }
+
+    func setTitleChangesExcluded(_ changes: [TitleChange], excluded: Bool) {
+        let ids = Set(changes.lazy.filter { $0.nodeID != nil }.map(\.id))
+        if excluded {
+            excludedTitleChangeIDs.formUnion(ids)
+        } else {
+            excludedTitleChangeIDs.subtract(ids)
+        }
+    }
+
     func confirm() {
         guard phase == .awaitingConfirmation,
               let sessionId = currentSessionId,
-              let ops = pendingOps else { return }
+              let plan,
+              let pendingOps else { return }
+        let excludedNodeIDs = Set(plan.titleChanges.compactMap { change in
+            excludedTitleChangeIDs.contains(change.id) ? change.nodeID : nil
+        })
+        let ops = pendingOps.excludingRetitles(withNodeIDs: excludedNodeIDs)
         sessionStore?.confirm(sessionId: sessionId, ops: ops)
         phase = .waitingForExtension
     }

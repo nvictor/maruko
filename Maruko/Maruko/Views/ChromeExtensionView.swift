@@ -74,7 +74,13 @@ struct ChromeExtensionView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = extensionStore.plan {
-                Text(plan.confirmationSummary)
+                let applicableCount = plan.titleChanges.count { $0.nodeID != nil }
+                let skippedCount = applicableCount - extensionStore.titleChangeApplyCount
+                if skippedCount > 0 {
+                    Text("\(plan.confirmationSummary)\n\n\(skippedCount) unchecked title \(skippedCount == 1 ? "change" : "changes") will be skipped.")
+                } else {
+                    Text(plan.confirmationSummary)
+                }
             }
         }
         .task {
@@ -202,7 +208,15 @@ struct ChromeExtensionView: View {
                     plan: plan,
                     filterText: filterText,
                     recencyWindowDays: extensionStore.formatOptions.recencyWindowDays,
-                    lastFormattedAt: nil
+                    lastFormattedAt: nil,
+                    excludedTitleChangeIDs: extensionStore.excludedTitleChangeIDs,
+                    onToggleTitleChangeExcluded: { change in
+                        extensionStore.setTitleChangeExcluded(
+                            change,
+                            excluded: !extensionStore.excludedTitleChangeIDs.contains(change.id)
+                        )
+                    },
+                    onSetTitleChangesExcluded: extensionStore.setTitleChangesExcluded
                 )
             }
         case .waitingForExtension:

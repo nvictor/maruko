@@ -81,6 +81,20 @@ struct ChromeOpListBuilderTests {
         #expect(ops.reorders.isEmpty)
     }
 
+    @Test func retitlesCanBeExcludedByChromeID() {
+        var ops = BookmarkOps()
+        ops.retitles = [
+            BookmarkOps.Retitle(id: "1", title: "One"),
+            BookmarkOps.Retitle(id: "2", title: "Two"),
+        ]
+
+        #expect(ops.excludingRetitles(withNodeIDs: []) == ops)
+        #expect(ops.excludingRetitles(withNodeIDs: ["3"]) == ops)
+
+        let filtered = ops.excludingRetitles(withNodeIDs: ["1"])
+        #expect(filtered.retitles == [BookmarkOps.Retitle(id: "2", title: "Two")])
+    }
+
     @Test func reordersAreCompletePostDeleteOrders() throws {
         let (trees, orders) = try adapted()
         var options = FormatOptions.default

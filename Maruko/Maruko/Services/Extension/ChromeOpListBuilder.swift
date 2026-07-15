@@ -29,6 +29,15 @@ nonisolated struct BookmarkOps: Codable, Equatable, Sendable {
     }
 }
 
+extension BookmarkOps {
+    func excludingRetitles(withNodeIDs excludedNodeIDs: Set<String>) -> BookmarkOps {
+        guard !excludedNodeIDs.isEmpty else { return self }
+        var copy = self
+        copy.retitles.removeAll { excludedNodeIDs.contains($0.id) }
+        return copy
+    }
+}
+
 /// Turns a formatted tree + its change plan into `BookmarkOps`. Deletes and
 /// retitles come straight from the plan's change records (which carry the
 /// chrome node id); moves come from `plan.recentFolderAdditions` (bookmarks
