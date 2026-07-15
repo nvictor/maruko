@@ -118,6 +118,33 @@ enum BookmarkRewriteEngine {
                 pattern: #"^https://(?:www\.)?instagram\.com/(?!explore$|reels$|direct$|accounts$|about$|developer$|legal$)([A-Za-z0-9_.]{1,30})/?$"#,
                 replacementTemplate: "instagram $1",
                 isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "GitLab Repo Title",
+                isEnabled: true,
+                order: 4,
+                matchField: .url,
+                pattern: #"^https://gitlab\.com/([^/]+)/([^/?#]+)$"#,
+                replacementTemplate: "gitlab $1/$2",
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "Wikipedia Article Title",
+                isEnabled: true,
+                order: 5,
+                matchField: .url,
+                pattern: #"^https://[a-z]{2,3}\.(?:m\.)?wikipedia\.org/wiki/([^?#]+)$"#,
+                replacementTemplate: "wikipedia ${wikititle:1}",
+                isCaseSensitive: false
+            ),
+            RewriteRule(
+                name: "Naked Domain Title",
+                isEnabled: true,
+                order: 6,
+                matchField: .url,
+                pattern: #"^https?://(?:www\.)?([^/?#]+)/?$"#,
+                replacementTemplate: "$1",
+                isCaseSensitive: false
             )
         ]
     }
@@ -199,7 +226,7 @@ enum BookmarkRewriteEngine {
         expression: NSRegularExpression,
         template: String
     ) -> String {
-        let markerRegex = try? NSRegularExpression(pattern: #"\$\{titlecase:(\d+)\}"#)
+        let markerRegex = try? NSRegularExpression(pattern: #"\$\{(titlecase|wikititle):(\d+)\}"#)
         guard let markerRegex else {
             return expression.replacementString(for: match, in: input, offset: 0, template: template)
         }
@@ -216,8 +243,9 @@ enum BookmarkRewriteEngine {
         var replacements: [String: String] = [:]
 
         for (index, marker) in markerMatches.enumerated().reversed() {
-            guard marker.numberOfRanges >= 2,
-                  let groupRange = Range(marker.range(at: 1), in: template),
+            guard marker.numberOfRanges >= 3,
+                  let kindRange = Range(marker.range(at: 1), in: template),
+                  let groupRange = Range(marker.range(at: 2), in: template),
                   let markerRange = Range(marker.range(at: 0), in: template),
                   let groupIndex = Int(template[groupRange]) else {
                 continue
@@ -232,7 +260,14 @@ enum BookmarkRewriteEngine {
             }
 
             let placeholder = "__TC_\(index)__"
-            replacements[placeholder] = titleCase(captured)
+            switch template[kindRange] {
+            case "titlecase":
+                replacements[placeholder] = titleCase(captured)
+            case "wikititle":
+                replacements[placeholder] = wikiTitle(captured)
+            default:
+                continue
+            }
             transformedTemplate.replaceSubrange(markerRange, with: placeholder)
         }
 
@@ -259,5 +294,10 @@ enum BookmarkRewriteEngine {
                 return String(first).uppercased() + lower.dropFirst()
             }
             .joined(separator: " ")
+    }
+
+    nonisolated private static func wikiTitle(_ text: String) -> String {
+        let decoded = text.removingPercentEncoding ?? text
+        return decoded.replacingOccurrences(of: "_", with: " ")
     }
 }

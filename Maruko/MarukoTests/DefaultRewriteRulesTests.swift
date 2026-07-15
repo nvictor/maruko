@@ -36,6 +36,9 @@ struct DefaultRewriteRulesTests {
             "Bitbucket Repo Title",
             "X/Twitter Profile Title",
             "Instagram Profile Title",
+            "GitLab Repo Title",
+            "Wikipedia Article Title",
+            "Naked Domain Title",
         ])
     }
 
@@ -50,6 +53,58 @@ struct DefaultRewriteRulesTests {
     @Test func bitbucketRepoTitleIgnoresNonRepoURLs() {
         #expect(rewritten(title: "Unchanged", url: "https://bitbucket.org/nvictor") == "Unchanged")
         #expect(rewritten(title: "Unchanged", url: "https://bitbucket.org/nvictor/maruko/src/main") == "Unchanged")
+    }
+
+    @Test func gitLabRepoTitleMatchesRepoURLs() {
+        #expect(rewritten(title: "GitLab", url: "https://gitlab.com/nvictor/maruko") == "gitlab nvictor/maruko")
+    }
+
+    @Test func gitLabRepoTitleIgnoresNonRepoURLs() {
+        #expect(rewritten(title: "Unchanged", url: "https://gitlab.com/nvictor") == "Unchanged")
+        #expect(rewritten(title: "Unchanged", url: "https://gitlab.com/explore/projects/trending") == "Unchanged")
+    }
+
+    @Test func wikipediaArticleTitleFormatsArticleSlugs() {
+        #expect(rewritten(
+            title: "A* search algorithm - Wikipedia",
+            url: "https://en.wikipedia.org/wiki/A*_search_algorithm"
+        ) == "wikipedia A* search algorithm")
+        #expect(rewritten(
+            title: "Bézier curve - Wikipedia",
+            url: "https://en.wikipedia.org/wiki/B%C3%A9zier_curve"
+        ) == "wikipedia Bézier curve")
+    }
+
+    @Test func wikipediaArticleTitleMatchesMobileAndOtherLanguages() {
+        #expect(rewritten(
+            title: "Ada Lovelace - Wikipedia",
+            url: "https://en.m.wikipedia.org/wiki/Ada_Lovelace"
+        ) == "wikipedia Ada Lovelace")
+        #expect(rewritten(
+            title: "Courbe de Bézier — Wikipédia",
+            url: "https://fr.wikipedia.org/wiki/Courbe_de_B%C3%A9zier"
+        ) == "wikipedia Courbe de Bézier")
+        #expect(rewritten(
+            title: "Algorithmique — Wikipédia",
+            url: "https://fr.m.wikipedia.org/wiki/Algorithmique"
+        ) == "wikipedia Algorithmique")
+    }
+
+    @Test func wikipediaArticleTitleIgnoresNonArticleURLs() {
+        #expect(rewritten(
+            title: "Unchanged",
+            url: "https://en.wikipedia.org/w/index.php?title=Ada_Lovelace"
+        ) == "Unchanged")
+    }
+
+    @Test func nakedDomainTitleMatchesBareHosts() {
+        #expect(rewritten(title: "Example", url: "https://example.com") == "example.com")
+        #expect(rewritten(title: "Example", url: "http://www.example.com/") == "example.com")
+        #expect(rewritten(title: "Example", url: "https://sub.example.com") == "sub.example.com")
+    }
+
+    @Test func nakedDomainTitleIgnoresURLsWithPaths() {
+        #expect(rewritten(title: "Unchanged", url: "https://example.com/path") == "Unchanged")
     }
 
     @Test func twitterProfileTitleMatchesBothHostnames() {
