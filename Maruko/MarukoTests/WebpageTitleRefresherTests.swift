@@ -73,7 +73,7 @@ struct WebpageTitleRefresherTests {
         #expect(options.rewriteTitles)
         #expect(!options.refreshTitlesFromWebpages)
         #expect(!options.moveRecentToTop)
-        #expect(options.recencyWindowDays == 90)
+        #expect(FormatOptions.recencyWindowDays == 7)
     }
 
     @Test @MainActor func obsoleteAIRulesAreDeletedAndRegexRulesSurvive() throws {

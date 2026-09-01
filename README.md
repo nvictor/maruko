@@ -10,9 +10,11 @@ Maruko is a macOS app that cleans up bookmarks in the browsers you already use. 
 
 - **Removes duplicates.** Bookmarks pointing at the same page (trailing slashes, fragments, query order, host case) are collapsed into one.
 - **Cleans up titles.** User-editable regex rules normalize messy bookmark titles (for example, turning a raw GitHub URL into `github owner/repo`). Maruko can also refresh the current HTML titles of up to 20 bookmarks in your **Recent** folder directly from their webpages.
-- **Surfaces what you actually use.** Bookmarks you opened recently (per your Chrome history) move to the top of their folder, most visited first (ties broken by most recent visit). Everything else keeps its order, and the bookmark bar's own row is never reordered. Those icons stay exactly where you put them.
+- **Surfaces what you actually use.** Bookmarks you opened in the last 7 days (per your Chrome history) move to the top of their folder, most visited first (ties broken by most recent visit). Everything else keeps its order, and the bookmark bar's own row is never reordered. Those icons stay exactly where you put them.
 
-Each step can be switched on or off in the Format Options menu (including webpage-title refresh and how far back "recently" reaches), and the regex title rules are fully editable. Webpage-title refresh is off by default.
+"Recently" always means the last 7 days; it isn't configurable. A shorter window never removes bookmarks from a "Recent" folder — items leave it only when the folder outgrows its 20-item cap.
+
+Each step can be switched on or off in the Format Options menu (including webpage-title refresh), and the regex title rules are fully editable. Webpage-title refresh is off by default.
 
 ## How it works
 

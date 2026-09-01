@@ -4,7 +4,6 @@ import SwiftUI
 struct FormatPlanListView: View {
     let plan: FormatPlan
     let filterText: String
-    let recencyWindowDays: Int
     let lastFormattedAt: Date?
     let excludedTitleChangeIDs: Set<UUID>
     let onToggleTitleChangeExcluded: (TitleChange) -> Void
@@ -105,7 +104,7 @@ struct FormatPlanListView: View {
             if plan.reorderedFolderCount > 0 {
                 Section("Recently Opened") {
                     Label(
-                        "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(recencyWindowDays) days moved to the top, most visited first. The bookmark bar's own row is never reordered.",
+                        "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(FormatOptions.recencyWindowDays) days moved to the top, most visited first. The bookmark bar's own row is never reordered.",
                         systemImage: "clock.arrow.circlepath"
                     )
                 }

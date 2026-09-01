@@ -38,13 +38,6 @@ struct ChromeExtensionView: View {
                     Toggle("Rewrite Titles", isOn: $extensionStore.formatOptions.rewriteTitles)
                     Toggle("Refresh Titles from Webpages", isOn: $extensionStore.formatOptions.refreshTitlesFromWebpages)
                     Toggle("Move Recently Opened to Top", isOn: $extensionStore.formatOptions.moveRecentToTop)
-                    Picker("Recently Opened Means", selection: $extensionStore.formatOptions.recencyWindowDays) {
-                        ForEach(FormatOptions.recencyWindowChoices, id: \.self) { days in
-                            Text("Last \(days) days").tag(days)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .disabled(!extensionStore.formatOptions.moveRecentToTop)
                 } label: {
                     Label("Format Options", systemImage: "slider.horizontal.3")
                 }
@@ -207,7 +200,6 @@ struct ChromeExtensionView: View {
                 FormatPlanListView(
                     plan: plan,
                     filterText: filterText,
-                    recencyWindowDays: extensionStore.formatOptions.recencyWindowDays,
                     lastFormattedAt: nil,
                     excludedTitleChangeIDs: extensionStore.excludedTitleChangeIDs,
                     onToggleTitleChangeExcluded: { change in
