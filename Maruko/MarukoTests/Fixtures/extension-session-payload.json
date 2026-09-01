@@ -27,7 +27,7 @@
     }
   ],
   "history": [
-    { "url": "https://news.ycombinator.com/", "lastVisitTime": 1751400000000 },
-    { "url": "https://github.com/", "lastVisitTime": 1751300000000 }
+    { "url": "https://news.ycombinator.com/", "lastVisitTime": 1751400000000, "visitCount": 42 },
+    { "url": "https://github.com/", "lastVisitTime": 1751300000000, "visitCount": 7 }
   ]
 }

@@ -36,6 +36,15 @@ struct RecentFolderItem: Identifiable, Sendable {
     let title: String
     let url: String
     let lastOpenedAt: Date?
+    let visitCount: Int
+}
+
+/// A bookmark's recent-history footprint: when it was last opened and how
+/// many times Chrome has recorded it being visited. Keyed by normalized URL
+/// in the `[String: RecentVisit]` maps `BookmarkTreeFormatter` consumes.
+struct RecentVisit: Sendable, Equatable {
+    let lastVisitedAt: Date
+    let visitCount: Int
 }
 
 struct FormatPlan: Sendable {
@@ -48,7 +57,7 @@ struct FormatPlan: Sendable {
     /// direct children because they were visited recently.
     let recentFolderAdditions: [RecentFolderMove]
     /// Bookmarks moved out of a "Recent" folder into Other Bookmarks because
-    /// the folder held more than the most-recently-accessed 20.
+    /// the folder held more than the 20 most visited.
     let recentFolderEvictions: [RecentFolderMove]
     /// Final URL contents of Recent, in the order that will be applied.
     var recentFolderItems: [RecentFolderItem] = []
@@ -131,7 +140,7 @@ struct FormatPlan: Sendable {
             clauses.append("updates Recent (\(recentFolderAdditions.count) added, \(recentFolderEvictions.count) moved out)")
         }
         if recentFolderReordered {
-            clauses.append("sorts Recent by last opened")
+            clauses.append("sorts Recent by number of visits")
         }
         let joined = clauses.isEmpty ? "makes no changes" : clauses.joined(separator: ", ")
         let sentence = joined.prefix(1).uppercased() + joined.dropFirst() + "."
@@ -151,7 +160,7 @@ nonisolated enum BookmarkTreeFormatter {
         trees: [(rootKey: String, node: BookmarkNode)],
         rules: [RewriteRuleSnapshot],
         options: FormatOptions = .default,
-        recentVisits: [String: Date] = [:],
+        recentVisits: [String: RecentVisit] = [:],
         titleOverrides: [String: String] = [:]
     ) -> FormatPlan {
         let roots = trees.map(\.node)
@@ -204,15 +213,15 @@ nonisolated enum BookmarkTreeFormatter {
         )
     }
 
-    /// Curates the "Recent" folder on its own. Sorts it by last-visited
-    /// date, pulls in qualifying candidates from Other Bookmarks' own
-    /// direct children, and caps it at `maxKept`. Without touching
-    /// duplicates, titles, or any other folder's order. This is a separate,
+    /// Curates the "Recent" folder on its own. Sorts it by visit count,
+    /// pulls in qualifying candidates from Other Bookmarks' own direct
+    /// children, and caps it at `maxKept`. Without touching duplicates,
+    /// titles, or any other folder's order. This is a separate,
     /// user-triggered action, independent of `FormatOptions.moveRecentToTop`.
     /// Returns `nil` if no folder named "Recent" exists anywhere in the tree.
     static func curateRecentFolderPlan(
         trees: [(rootKey: String, node: BookmarkNode)],
-        recentVisits: [String: Date],
+        recentVisits: [String: RecentVisit],
         maxKept: Int = 20
     ) -> FormatPlan? {
         guard let recentFolder = findRecentFolder(in: trees) else { return nil }
@@ -228,10 +237,12 @@ nonisolated enum BookmarkTreeFormatter {
         let recentFolderReordered = originalRecentOrder != finalRecentOrder
         let recentFolderItems = recentFolder.children.compactMap { node -> RecentFolderItem? in
             guard node.kind == .url else { return nil }
+            let visit = node.normalizedURL.flatMap { recentVisits[$0] }
             return RecentFolderItem(
                 title: node.title,
                 url: node.url ?? "",
-                lastOpenedAt: node.normalizedURL.flatMap { recentVisits[$0] }
+                lastOpenedAt: visit?.lastVisitedAt,
+                visitCount: visit?.visitCount ?? 0
             )
         }
 
@@ -359,19 +370,20 @@ nonisolated enum BookmarkTreeFormatter {
         }.prefix(limit).map { $0 }
     }
 
-    /// Moves bookmarks that appear in `recentVisits` (normalized URL → last
-    /// visit) to the top of their folder, most recently opened first; every
-    /// other item keeps its existing order. Pass `skipThisFolder` to leave a
-    /// folder's own children untouched while still processing its subfolders.
-    /// Returns how many folders changed order.
+    /// Moves bookmarks that appear in `recentVisits` (normalized URL →
+    /// recent visit) to the top of their folder, most visited first (ties
+    /// broken by most recent visit); every other item keeps its existing
+    /// order. Pass `skipThisFolder` to leave a folder's own children
+    /// untouched while still processing its subfolders. Returns how many
+    /// folders changed order.
     static func moveRecentToTop(
         in root: BookmarkNode,
-        recentVisits: [String: Date],
+        recentVisits: [String: RecentVisit],
         skipThisFolder: Bool = false
     ) -> Int {
         var reordered = 0
 
-        func lastVisit(_ node: BookmarkNode) -> Date? {
+        func lastVisit(_ node: BookmarkNode) -> RecentVisit? {
             guard node.kind == .url, let key = node.normalizedURL else { return nil }
             return recentVisits[key]
         }
@@ -381,10 +393,15 @@ nonisolated enum BookmarkTreeFormatter {
                 let recent = folder.children
                     .enumerated()
                     .compactMap { item in
-                        lastVisit(item.element).map { (offset: item.offset, node: item.element, visited: $0) }
+                        lastVisit(item.element).map { (offset: item.offset, node: item.element, visit: $0) }
                     }
                     .sorted {
-                        if $0.visited != $1.visited { return $0.visited > $1.visited }
+                        if $0.visit.visitCount != $1.visit.visitCount {
+                            return $0.visit.visitCount > $1.visit.visitCount
+                        }
+                        if $0.visit.lastVisitedAt != $1.visit.lastVisitedAt {
+                            return $0.visit.lastVisitedAt > $1.visit.lastVisitedAt
+                        }
                         return $0.offset < $1.offset
                     }
                     .map(\.node)
@@ -440,25 +457,27 @@ nonisolated enum BookmarkTreeFormatter {
     }
 
     /// Curates a "Recent" folder as a bounded, sorted view of the most
-    /// recently visited bookmarks: candidates are its own direct URL
-    /// children plus Other Bookmarks' own direct URL children that have a
-    /// hit in `recentVisits` (bookmarks filed into other named folders, and
+    /// visited bookmarks: candidates are its own direct URL children plus
+    /// Other Bookmarks' own direct URL children that have a hit in
+    /// `recentVisits` (bookmarks filed into other named folders, and
     /// never-visited items already sitting in Other Bookmarks, are left
-    /// alone). All candidates are ranked by last-visited date, most recent
-    /// first. Items with no visit rank oldest. The top `maxKept` end up in
-    /// "Recent" (pulling in whichever Other Bookmarks candidates made the
-    /// cut); anything that was in "Recent" but didn't make the cut moves
-    /// back to Other Bookmarks. Subfolders inside "Recent" are left
-    /// untouched, placed after the sorted URL children. Returns
-    /// (additions moved into Recent, evictions moved out to Other Bookmarks).
+    /// alone). All candidates are ranked by visit count, most visited first
+    /// (ties broken by most recent visit). Items with no visit rank last.
+    /// The top `maxKept` end up in "Recent" (pulling in whichever Other
+    /// Bookmarks candidates made the cut); anything that was in "Recent" but
+    /// didn't make the cut moves back to Other Bookmarks. Subfolders inside
+    /// "Recent" are left untouched, placed after the sorted URL children.
+    /// Returns (additions moved into Recent, evictions moved out to Other
+    /// Bookmarks).
     static func curateRecentFolder(
         _ recentFolder: BookmarkNode,
         otherRoot: BookmarkNode?,
-        recentVisits: [String: Date],
+        recentVisits: [String: RecentVisit],
         maxKept: Int = 20
     ) -> (additions: [RecentFolderMove], evictions: [RecentFolderMove]) {
-        func lastVisit(_ node: BookmarkNode) -> Date {
-            node.normalizedURL.flatMap { recentVisits[$0] } ?? .distantPast
+        func lastVisit(_ node: BookmarkNode) -> RecentVisit {
+            node.normalizedURL.flatMap { recentVisits[$0] }
+                ?? RecentVisit(lastVisitedAt: .distantPast, visitCount: 0)
         }
 
         let alreadyInRecent = recentFolder.children.filter { $0.kind == .url }
@@ -476,7 +495,12 @@ nonisolated enum BookmarkTreeFormatter {
             .sorted { a, b in
                 let visitA = lastVisit(a.element)
                 let visitB = lastVisit(b.element)
-                if visitA != visitB { return visitA > visitB }
+                if visitA.visitCount != visitB.visitCount {
+                    return visitA.visitCount > visitB.visitCount
+                }
+                if visitA.lastVisitedAt != visitB.lastVisitedAt {
+                    return visitA.lastVisitedAt > visitB.lastVisitedAt
+                }
                 return a.offset < b.offset
             }
             .map(\.element)
@@ -486,7 +510,7 @@ nonisolated enum BookmarkTreeFormatter {
         let droppedOrdered = Array(ranked.dropFirst(effectiveMaxKept))
 
         // Both derived from the ranked (not original-array) order, so the
-        // move lists reflect recency order rather than incidental array order.
+        // move lists reflect visit-count order rather than incidental array order.
         let additions = keptOrdered.filter { otherCandidateIDs.contains(ObjectIdentifier($0)) }
         let evictions = droppedOrdered.filter { alreadyInRecentIDs.contains(ObjectIdentifier($0)) }
 

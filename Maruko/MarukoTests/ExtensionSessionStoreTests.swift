@@ -112,6 +112,7 @@ struct ExtensionSessionStoreTests {
         #expect(payload.browser == "chrome")
         #expect(payload.tree.count == 1)
         #expect(payload.history.count == 2)
+        #expect(payload.history.first?.visitCount == 42)
 
         store.markAwaitingConfirmation(sessionId: id)
         store.confirm(sessionId: id, ops: BookmarkOps())

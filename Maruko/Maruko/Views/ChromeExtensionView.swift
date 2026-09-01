@@ -55,7 +55,7 @@ struct ChromeExtensionView: View {
                     extensionStore.sortRecentFolder()
                 }
                 .disabled(extensionStore.phase != .awaitingConfirmation)
-                .help("Sorts the \u{201C}Recent\u{201D} folder by last opened, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most recent. Independent of Format Bookmarks.")
+                .help("Sorts the \u{201C}Recent\u{201D} folder by number of visits, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most visited. Independent of Format Bookmarks.")
 
                 Button("Apply via Extension") {
                     showingApplyConfirmation = true

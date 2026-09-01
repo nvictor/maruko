@@ -144,7 +144,11 @@ async function collectPayload() {
     tree,
     history: historyItems
       .filter((item) => item.url && item.lastVisitTime)
-      .map((item) => ({ url: item.url, lastVisitTime: item.lastVisitTime })),
+      .map((item) => ({
+        url: item.url,
+        lastVisitTime: item.lastVisitTime,
+        visitCount: item.visitCount ?? 0,
+      })),
   };
 }
 

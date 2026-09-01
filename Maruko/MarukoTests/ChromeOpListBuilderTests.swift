@@ -21,7 +21,7 @@ struct ChromeOpListBuilderTests {
         _ trees: [ChromeBookmarkTreeAdapter.RootedTree],
         options: FormatOptions,
         rules: [RewriteRuleSnapshot] = [],
-        recentVisits: [String: Date] = [:]
+        recentVisits: [String: RecentVisit] = [:]
     ) -> FormatPlan {
         BookmarkTreeFormatter.formatTree(
             trees: trees.map { (rootKey: $0.rootKey, node: $0.node) },
@@ -29,6 +29,11 @@ struct ChromeOpListBuilderTests {
             options: options,
             recentVisits: recentVisits
         )
+    }
+
+    /// A recent-visit map from `url: date` pairs, all sharing one visit count.
+    private func visitMap(_ entries: [String: Date], eachVisited count: Int = 1) -> [String: RecentVisit] {
+        entries.mapValues { RecentVisit(lastVisitedAt: $0, visitCount: count) }
     }
 
     @Test func deletesCarryChromeIdsAndDeleteOnlyFoldersEmitNoReorder() throws {
@@ -104,7 +109,7 @@ struct ChromeOpListBuilderTests {
         // same folder. Expected final order of folder "2": 22 first, then
         // 20. A complete order that already excludes the deleted 21.
         let newsKey = try #require(URLNormalizer.normalize("https://news.ycombinator.com/"))
-        let plan = format(trees, options: options, recentVisits: [newsKey: Date()])
+        let plan = format(trees, options: options, recentVisits: visitMap([newsKey: Date()]))
         let ops = ChromeOpListBuilder.makeOps(
             originalChildOrders: orders,
             formattedTrees: trees,
@@ -124,7 +129,7 @@ struct ChromeOpListBuilderTests {
         // "14" (MDN, inside the Docs subfolder) is recent; the bar's own
         // row must stay put while the subfolder reorders.
         let mdnKey = try #require(URLNormalizer.normalize("https://developer.mozilla.org/"))
-        let plan = format(trees, options: options, recentVisits: [mdnKey: Date()])
+        let plan = format(trees, options: options, recentVisits: visitMap([mdnKey: Date()]))
         let ops = ChromeOpListBuilder.makeOps(
             originalChildOrders: orders,
             formattedTrees: trees,
@@ -156,12 +161,12 @@ struct ChromeOpListBuilderTests {
     @Test func overflowingRecentFolderEmitsMovesAndReordersForBothFolders() throws {
         let now = Date()
         var recentChildren: [ChromeBookmarkNode] = []
-        var visits: [String: Date] = [:]
+        var visits: [String: RecentVisit] = [:]
         for i in 1...22 {
             let url = "https://item\(i).example.com/"
             recentChildren.append(ChromeBookmarkNode(id: "r\(i)", title: "Item \(i)", url: url, unmodifiable: nil, folderType: nil, children: nil))
-            // Higher i = more recently visited; items 1 and 2 are oldest.
-            visits[url] = now.addingTimeInterval(Double(i))
+            // Higher i = more visits; items 1 and 2 are the least visited.
+            visits[url] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
         let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)
         let bar = ChromeBookmarkNode(id: "1", title: "Bookmarks Bar", url: nil, unmodifiable: nil, folderType: "bookmarks-bar", children: [recentFolder])
@@ -203,10 +208,10 @@ struct ChromeOpListBuilderTests {
             ChromeBookmarkNode(id: "r2", title: "Newer", url: "https://newer.example.com/", unmodifiable: nil, folderType: nil, children: nil),
             ChromeBookmarkNode(id: "r3", title: "Never visited", url: "https://never.example.com/", unmodifiable: nil, folderType: nil, children: nil),
         ]
-        let visits = [
+        let visits = visitMap([
             "https://older.example.com/": now.addingTimeInterval(-3600),
             "https://newer.example.com/": now,
-        ]
+        ])
         let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)
         let bar = ChromeBookmarkNode(id: "1", title: "Bookmarks Bar", url: nil, unmodifiable: nil, folderType: "bookmarks-bar", children: [recentFolder])
         let other = ChromeBookmarkNode(id: "2", title: "Other Bookmarks", url: nil, unmodifiable: nil, folderType: "other", children: [])
@@ -243,9 +248,9 @@ struct ChromeOpListBuilderTests {
             ChromeBookmarkNode(id: "r\($0)", title: "Item \($0)", url: "https://r\($0).example.com/", unmodifiable: nil, folderType: nil, children: nil)
         }
         let now = Date()
-        var visits: [String: Date] = [:]
+        var visits: [String: RecentVisit] = [:]
         for i in 1...21 {
-            visits["https://r\(i).example.com/"] = now.addingTimeInterval(Double(i))
+            visits["https://r\(i).example.com/"] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
 
         let recentFolder = ChromeBookmarkNode(id: "10", title: "Recent", url: nil, unmodifiable: nil, folderType: nil, children: recentChildren)

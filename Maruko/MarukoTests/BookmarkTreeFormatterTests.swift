@@ -22,6 +22,14 @@ struct BookmarkTreeFormatterTests {
         }
     }
 
+    /// A recent-visit map from `url: date` pairs, all sharing one visit
+    /// count (default 1). Ordering tests written before visit-count sorting
+    /// rely on the most-recent-visit tie-break, which a uniform count keeps
+    /// in force.
+    private func visitMap(_ entries: [String: Date], eachVisited count: Int = 1) -> [String: RecentVisit] {
+        entries.mapValues { RecentVisit(lastVisitedAt: $0, visitCount: count) }
+    }
+
     @Test func dedupeKeepsFirstDepthFirstOccurrence() throws {
         let roots = try self.roots(fromFixture: "chrome-duplicates")
         let removals = BookmarkTreeFormatter.removeDuplicates(in: roots)
@@ -100,9 +108,31 @@ struct BookmarkTreeFormatterTests {
     @Test func recentItemsMoveToTopOfTheirFolderMostRecentFirst() throws {
         let roots = try self.roots(fromFixture: "chrome-unsorted")
         let now = Date()
-        let recentVisits = [
+        let recentVisits = visitMap([
             "https://d.example.com/": now.addingTimeInterval(-3600),
             "https://dd.example.com/": now,
+        ])
+
+        let reordered = BookmarkTreeFormatter.moveRecentToTop(
+            in: roots[0],
+            recentVisits: recentVisits,
+            skipThisFolder: true
+        )
+
+        let aFolder = roots[0].children.first { $0.title == "A Folder" }!
+        #expect(aFolder.children.map(\.title) == ["Delta", "delta"])
+        #expect(reordered == 1)
+    }
+
+    @Test func recentItemsSortByVisitCountThenRecency() throws {
+        let roots = try self.roots(fromFixture: "chrome-unsorted")
+        let now = Date()
+        // "A Folder" starts out ["delta", "Delta"]. "Delta" was last opened
+        // a day ago but visited far more often than the just-opened "delta",
+        // so visit count floats it to the top.
+        let recentVisits: [String: RecentVisit] = [
+            "https://dd.example.com/": RecentVisit(lastVisitedAt: now.addingTimeInterval(-86_400), visitCount: 25),
+            "https://d.example.com/": RecentVisit(lastVisitedAt: now, visitCount: 2),
         ]
 
         let reordered = BookmarkTreeFormatter.moveRecentToTop(
@@ -120,11 +150,11 @@ struct BookmarkTreeFormatterTests {
         let roots = try self.roots(fromFixture: "chrome-unsorted")
         let originalOrder = roots[0].children.map(\.title)
         // Everything directly in the bar was opened recently.
-        let recentVisits = [
+        let recentVisits = visitMap([
             "https://z.example.com/": Date(),
             "https://a.example.com/": Date(),
             "https://aa.example.com/": Date(),
-        ]
+        ])
 
         let reordered = BookmarkTreeFormatter.moveRecentToTop(
             in: roots[0],
@@ -142,7 +172,7 @@ struct BookmarkTreeFormatterTests {
         // and nothing else appears in history.
         let reordered = BookmarkTreeFormatter.moveRecentToTop(
             in: roots[0],
-            recentVisits: ["https://b.example.com/": Date()],
+            recentVisits: visitMap(["https://b.example.com/": Date()]),
             skipThisFolder: true
         )
 
@@ -188,7 +218,7 @@ struct BookmarkTreeFormatterTests {
             trees: trees,
             rules: [],
             options: options,
-            recentVisits: ["https://example.com/other": Date()]
+            recentVisits: visitMap(["https://example.com/other": Date()])
         )
         #expect(plan.duplicates.isEmpty)
         #expect(plan.reorderedFolderCount == 0)
@@ -333,12 +363,12 @@ struct BookmarkTreeFormatterTests {
             totalBookmarks: 3, totalFolders: 1
         )
         #expect(!recentSortPlan.isEmpty)
-        #expect(recentSortPlan.confirmationSummary.hasPrefix("Sorts Recent by last opened."))
+        #expect(recentSortPlan.confirmationSummary.hasPrefix("Sorts Recent by number of visits."))
     }
 
     @Test func formatTreeIsIdempotent() throws {
         let trees = try self.trees(fromFixture: "chrome-unsorted")
-        let recentVisits = ["https://dd.example.com/": Date()]
+        let recentVisits = visitMap(["https://dd.example.com/": Date()])
 
         let first = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
         #expect(!first.isEmpty)
@@ -454,16 +484,39 @@ struct BookmarkTreeFormatterTests {
             rawURL(id: "c", name: "C (never visited)", url: "https://c.example.com/"),
         ]))!
         let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
-        let visits = [
+        let visits = visitMap([
             "https://a.example.com/": now.addingTimeInterval(-3600),
             "https://b.example.com/": now,
-        ]
+        ])
 
         let (additions, evictions) = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 20)
 
         #expect(additions.isEmpty)
         #expect(evictions.isEmpty)
         #expect(recent.children.map(\.title) == ["B", "A", "C (never visited)"])
+    }
+
+    @Test func curateRecentFolderRanksByVisitCountAcrossTheCap() {
+        let now = Date()
+        let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: [
+            rawURL(id: "popular", name: "Old but popular", url: "https://popular.example.com/"),
+            rawURL(id: "rare", name: "Fresh but rare", url: "https://rare.example.com/"),
+        ]))!
+        let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
+        let visits: [String: RecentVisit] = [
+            // Last opened a month ago, but visited 40 times.
+            "https://popular.example.com/": RecentVisit(lastVisitedAt: now.addingTimeInterval(-30 * 86_400), visitCount: 40),
+            // Opened just now, but only once.
+            "https://rare.example.com/": RecentVisit(lastVisitedAt: now, visitCount: 1),
+        ]
+
+        let (additions, evictions) = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 1)
+
+        // Visit count decides both the order and which one survives the cap.
+        #expect(additions.isEmpty)
+        #expect(evictions.map(\.title) == ["Fresh but rare"])
+        #expect(recent.children.map(\.title) == ["Old but popular"])
+        #expect(other.children.map(\.title) == ["Fresh but rare"])
     }
 
     @Test func curateRecentFolderPullsInRecentlyVisitedBookmarksFromOtherBookmarks() {
@@ -475,11 +528,11 @@ struct BookmarkTreeFormatterTests {
             rawURL(id: "b", name: "Just visited", url: "https://b.example.com/"),
             rawURL(id: "c", name: "Never visited", url: "https://c.example.com/"),
         ]))!
-        let visits = [
+        let visits = visitMap([
             "https://a.example.com/": now.addingTimeInterval(-3600),
             // More recent than "A". Should be pulled in ahead of it.
             "https://b.example.com/": now,
-        ]
+        ])
 
         let (additions, evictions) = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 20)
 
@@ -502,7 +555,7 @@ struct BookmarkTreeFormatterTests {
         other.children = [BookmarkNode(raw: rawFolder(id: "99", name: "Work", children: []))!]
         other.children[0].children = [filed]
 
-        let visits = ["https://filed.example.com/": Date()]
+        let visits = visitMap(["https://filed.example.com/": Date()])
         let (additions, evictions) = BookmarkTreeFormatter.curateRecentFolder(recent, otherRoot: other, recentVisits: visits, maxKept: 20)
 
         #expect(additions.isEmpty)
@@ -527,12 +580,12 @@ struct BookmarkTreeFormatterTests {
     @Test func curateRecentFolderEvictsOldestBeyondCapToOtherBookmarks() {
         let now = Date()
         var raws: [[String: Any]] = []
-        var visits: [String: Date] = [:]
+        var visits: [String: RecentVisit] = [:]
         for i in 1...22 {
             let url = "https://item\(i).example.com/"
             raws.append(rawURL(id: "\(i)", name: "Item \(i)", url: url))
-            // Higher i = more recently visited; items 1 and 2 are oldest.
-            visits[url] = now.addingTimeInterval(Double(i))
+            // Higher i = more visits; items 1 and 2 are the least visited.
+            visits[url] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
         let recent = BookmarkNode(raw: rawFolder(id: "10", name: "Recent", children: raws))!
         let other = BookmarkNode(raw: rawFolder(id: "2", name: "Other Bookmarks", children: []))!
@@ -581,11 +634,11 @@ struct BookmarkTreeFormatterTests {
         // folder, no cap, no pulling in from Other Bookmarks.
         let now = Date()
         var recentChildren: [[String: Any]] = []
-        var visits: [String: Date] = [:]
+        var visits: [String: RecentVisit] = [:]
         for i in 1...22 {
             let url = "https://recent\(i).example.com/"
             recentChildren.append(rawURL(id: "r\(i)", name: "Item \(i)", url: url))
-            visits[url] = now.addingTimeInterval(Double(i))
+            visits[url] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
         let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: recentChildren)
         let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw]))!
@@ -612,7 +665,7 @@ struct BookmarkTreeFormatterTests {
 
     @Test func formatTreeUsesLegacyGlobalReorderWhenNoRecentFolderExists() throws {
         let trees = try self.trees(fromFixture: "chrome-unsorted")
-        let recentVisits = ["https://dd.example.com/": Date()]
+        let recentVisits = visitMap(["https://dd.example.com/": Date()])
 
         let plan = BookmarkTreeFormatter.formatTree(trees: trees, rules: [], recentVisits: recentVisits)
 
@@ -630,11 +683,11 @@ struct BookmarkTreeFormatterTests {
     @Test func curateRecentFolderPlanTouchesOnlyRecentFolderMoves() throws {
         let now = Date()
         var raws: [[String: Any]] = []
-        var visits: [String: Date] = [:]
+        var visits: [String: RecentVisit] = [:]
         for i in 1...22 {
             let url = "https://item\(i).example.com/"
             raws.append(rawURL(id: "\(i)", name: "Item \(i)", url: url))
-            visits[url] = now.addingTimeInterval(Double(i))
+            visits[url] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
         let recentFolderRaw = rawFolder(id: "10", name: "Recent", children: raws)
         let bar = BookmarkNode(raw: rawFolder(id: "1", name: "Bookmarks Bar", children: [recentFolderRaw]))!
@@ -676,10 +729,10 @@ struct BookmarkTreeFormatterTests {
         ]
         let plan = try #require(BookmarkTreeFormatter.curateRecentFolderPlan(
             trees: trees,
-            recentVisits: [
+            recentVisits: visitMap([
                 "https://older.example.com/": now.addingTimeInterval(-3600),
                 "https://newer.example.com/": now,
-            ]
+            ])
         ))
 
         #expect(plan.recentFolderAdditions.isEmpty)

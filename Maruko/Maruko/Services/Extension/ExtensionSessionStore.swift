@@ -8,6 +8,10 @@ nonisolated struct ExtensionSessionPayload: Codable, Sendable {
         let url: String
         /// Milliseconds since the Unix epoch (chrome.history lastVisitTime).
         let lastVisitTime: Double
+        /// chrome.history `HistoryItem.visitCount` — lifetime number of
+        /// visits to this URL. Optional so payloads from an older extension
+        /// (or fixtures) still decode; treated as 0 when absent.
+        let visitCount: Int?
     }
 
     let browser: String?
@@ -249,19 +253,28 @@ nonisolated final class ExtensionSessionStore: @unchecked Sendable {
 // MARK: - History mapping
 
 /// Converts the extension's history payload into the `[normalized URL →
-/// most recent visit]` map `BookmarkTreeFormatter` expects.
+/// RecentVisit]` map `BookmarkTreeFormatter` expects. Entries older than
+/// `cutoff` are dropped. When several raw URLs normalize to the same key,
+/// the latest visit date wins and the visit counts are summed.
 nonisolated enum ExtensionHistoryMapper {
     static func recentVisits(
         history: [ExtensionSessionPayload.HistoryVisit],
         cutoff: Date
-    ) -> [String: Date] {
-        var visits: [String: Date] = [:]
+    ) -> [String: RecentVisit] {
+        var visits: [String: RecentVisit] = [:]
         for visit in history {
             guard let normalized = URLNormalizer.normalize(visit.url) else { continue }
             let date = Date(timeIntervalSince1970: visit.lastVisitTime / 1000)
             guard date >= cutoff else { continue }
-            if let existing = visits[normalized], existing >= date { continue }
-            visits[normalized] = date
+            let count = max(0, visit.visitCount ?? 0)
+            if let existing = visits[normalized] {
+                visits[normalized] = RecentVisit(
+                    lastVisitedAt: max(existing.lastVisitedAt, date),
+                    visitCount: existing.visitCount + count
+                )
+            } else {
+                visits[normalized] = RecentVisit(lastVisitedAt: date, visitCount: count)
+            }
         }
         return visits
     }

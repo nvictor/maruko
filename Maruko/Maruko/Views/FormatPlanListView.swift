@@ -105,7 +105,7 @@ struct FormatPlanListView: View {
             if plan.reorderedFolderCount > 0 {
                 Section("Recently Opened") {
                     Label(
-                        "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(recencyWindowDays) days moved to the top. The bookmark bar's own row is never reordered.",
+                        "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(recencyWindowDays) days moved to the top, most visited first. The bookmark bar's own row is never reordered.",
                         systemImage: "clock.arrow.circlepath"
                     )
                 }
@@ -127,7 +127,7 @@ struct FormatPlanListView: View {
             if !recentFolderEvictions.isEmpty {
                 Section(sectionTitle("Moved out of Recent", shown: recentFolderEvictions.count, total: plan.recentFolderEvictions.count)) {
                     Label(
-                        "\(plan.recentFolderEvictions.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most recently opened).",
+                        "\(plan.recentFolderEvictions.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most visited).",
                         systemImage: "tray.and.arrow.down"
                     )
                     ForEach(recentFolderEvictions) { move in
@@ -138,16 +138,16 @@ struct FormatPlanListView: View {
             }
 
             if !recentFolderItems.isEmpty {
-                Section(sectionTitle("Recent — newest first", shown: recentFolderItems.count, total: plan.recentFolderItems.count)) {
+                Section(sectionTitle("Recent — most visited first", shown: recentFolderItems.count, total: plan.recentFolderItems.count)) {
                     Label(
-                        "These bookmarks will appear in Recent, sorted by last opened.",
+                        "These bookmarks will appear in Recent, sorted by number of visits.",
                         systemImage: "clock.arrow.circlepath"
                     )
                     ForEach(Array(recentFolderItems.enumerated()), id: \.element.id) { index, item in
                         VStack(alignment: .leading, spacing: 2) {
                             Text("\(index + 1). \(item.title.isEmpty ? item.url : item.title)")
                                 .lineLimit(1)
-                            Text(item.lastOpenedAt?.formatted(date: .abbreviated, time: .shortened) ?? "No recorded open date")
+                            Text(recentFolderItemDetail(item))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -159,5 +159,13 @@ struct FormatPlanListView: View {
 
     private func sectionTitle(_ label: String, shown: Int, total: Int) -> String {
         shown == total ? "\(label) (\(total))" : "\(label) (\(shown) of \(total))"
+    }
+
+    /// Caption under a Recent item: visit count first (the sort key), then
+    /// when it was last opened if known.
+    private func recentFolderItemDetail(_ item: RecentFolderItem) -> String {
+        let visits = "\(item.visitCount) visit\(item.visitCount == 1 ? "" : "s")"
+        guard let lastOpenedAt = item.lastOpenedAt else { return visits }
+        return "\(visits) · last opened \(lastOpenedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 }
