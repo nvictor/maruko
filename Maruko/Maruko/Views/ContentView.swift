@@ -1,11 +1,7 @@
 import SwiftUI
-import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Environment(\.openWindow) private var openWindow
-    @StateObject private var rulesStore = RewriteRulesStore()
-    @StateObject private var extensionStore = ExtensionFormatStore()
+    @ObservedObject var extensionStore: ExtensionFormatStore
     @State private var selection: SidebarItem? = .chromeExtension
 
     var body: some View {
@@ -23,39 +19,11 @@ struct ContentView: View {
                 )
             }
         }
-        .onAppear {
-            rulesStore.configure(context: modelContext)
-            extensionStore.configure(
-                rules: { [weak rulesStore] in try rulesStore?.enabledRuleSnapshots() ?? [] }
-            )
-        }
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                Button {
-                    openWindow(id: "rewriteRules")
-                } label: {
-                    Label("Rewrite Rules", systemImage: "wand.and.stars")
-                }
-                .help("Edit the title rewrite rules applied by Format Bookmarks")
-            }
-        }
-        .alert("Error", isPresented: errorBinding(for: rulesStore)) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(rulesStore.errorMessage ?? "Unknown error")
-        }
         .alert("Error", isPresented: extensionErrorBinding) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(extensionStore.errorMessage ?? "Unknown error")
         }
-    }
-
-    private func errorBinding(for store: RewriteRulesStore) -> Binding<Bool> {
-        Binding(
-            get: { store.errorMessage != nil },
-            set: { if !$0 { store.errorMessage = nil } }
-        )
     }
 
     private var extensionErrorBinding: Binding<Bool> {

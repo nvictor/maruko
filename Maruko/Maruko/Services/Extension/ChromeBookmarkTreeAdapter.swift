@@ -27,8 +27,8 @@ nonisolated enum ChromeBookmarkTreeAdapterError: LocalizedError {
 }
 
 /// Converts `chrome.bookmarks.getTree()` output into the same
-/// `(rootKey, BookmarkNode)` trees the file-based formatter uses, so
-/// `BookmarkTreeFormatter.formatTree` runs unchanged on live browser data.
+/// `(rootKey, BookmarkNode)` trees `BookmarkTreeFormatter.curateTree` uses,
+/// so it runs unchanged on live browser data.
 nonisolated enum ChromeBookmarkTreeAdapter {
     struct RootedTree {
         let rootKey: String

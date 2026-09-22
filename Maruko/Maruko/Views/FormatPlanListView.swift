@@ -5,16 +5,11 @@ struct FormatPlanListView: View {
     let plan: FormatPlan
     let filterText: String
     let lastFormattedAt: Date?
-    let excludedTitleChangeIDs: Set<UUID>
-    let onToggleTitleChangeExcluded: (TitleChange) -> Void
-    let onSetTitleChangesExcluded: ([TitleChange], Bool) -> Void
 
     var body: some View {
         let duplicates = plan.duplicates(matching: filterText)
-        let titleChanges = plan.titleChanges(matching: filterText)
-        let recentFolderAdditions = plan.recentFolderAdditions(matching: filterText)
-        let recentFolderEvictions = plan.recentFolderEvictions(matching: filterText)
-        let recentFolderItems = plan.recentFolderItems(matching: filterText)
+        let routineItems = plan.routineItems(matching: filterText)
+        let recentItems = plan.recentItems(matching: filterText)
         let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         List {
@@ -30,7 +25,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, titleChanges.isEmpty, recentFolderAdditions.isEmpty, recentFolderEvictions.isEmpty, recentFolderItems.isEmpty, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, routineItems.isEmpty, recentItems.isEmpty, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -49,122 +44,70 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if !titleChanges.isEmpty {
-                Section {
-                    ForEach(titleChanges) { change in
-                        HStack(alignment: .top, spacing: 8) {
-                            if change.nodeID != nil {
-                                Toggle(
-                                    "Apply title change",
-                                    isOn: Binding(
-                                        get: { !excludedTitleChangeIDs.contains(change.id) },
-                                        set: { _ in onToggleTitleChangeExcluded(change) }
-                                    )
-                                )
-                                .toggleStyle(.checkbox)
-                                .labelsHidden()
-                            } else {
-                                Image(systemName: "info.circle")
-                                    .foregroundStyle(.secondary)
-                                    .help("This preview item has no Chrome bookmark ID and cannot be applied.")
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(change.oldTitle)
-                                    .strikethrough()
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                Text(change.newTitle)
-                                    .lineLimit(1)
-                            }
-                        }
+            if !routineItems.isEmpty {
+                Section(sectionTitle("Routine", shown: routineItems.count, total: plan.routineItems.count, cap: FormatOptions.maxRoutineItems)) {
+                    if !plan.routineAdditions.isEmpty || !plan.routineEvictions.isEmpty {
+                        moveSummaryLabel(
+                            added: plan.routineAdditions.count,
+                            evicted: plan.routineEvictions.count,
+                            systemImage: "sparkles"
+                        )
                     }
-                } header: {
-                    HStack {
-                        Text(sectionTitle("Titles to rewrite", shown: titleChanges.count, total: plan.titleChanges.count))
-                        let excludedCount = titleChanges.count { excludedTitleChangeIDs.contains($0.id) }
-                        if excludedCount > 0 {
-                            Text("\(excludedCount) unchecked")
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("All") {
-                            onSetTitleChangesExcluded(titleChanges, false)
-                        }
-                        .controlSize(.small)
-                        Button("None") {
-                            onSetTitleChangesExcluded(titleChanges, true)
-                        }
-                        .controlSize(.small)
-                    }
-                    .textCase(nil)
-                }
-            }
-
-            if plan.reorderedFolderCount > 0 {
-                Section("Recently Opened") {
-                    Label(
-                        "\(plan.reorderedFolderCount) folders will have bookmarks opened in the last \(FormatOptions.recencyWindowDays) days moved to the top, most visited first. The bookmark bar's own row is never reordered.",
-                        systemImage: "clock.arrow.circlepath"
-                    )
-                }
-            }
-
-            if !recentFolderAdditions.isEmpty {
-                Section(sectionTitle("Moved into Recent", shown: recentFolderAdditions.count, total: plan.recentFolderAdditions.count)) {
-                    Label(
-                        "\(plan.recentFolderAdditions.count) bookmarks moved from Other Bookmarks into Recent because they were opened recently.",
-                        systemImage: "tray.and.arrow.up"
-                    )
-                    ForEach(recentFolderAdditions) { move in
-                        Text(move.title.isEmpty ? move.url : move.title)
-                            .lineLimit(1)
+                    ForEach(Array(routineItems.enumerated()), id: \.element.id) { index, item in
+                        curatedItemRow(index: index, item: item)
                     }
                 }
             }
 
-            if !recentFolderEvictions.isEmpty {
-                Section(sectionTitle("Moved out of Recent", shown: recentFolderEvictions.count, total: plan.recentFolderEvictions.count)) {
-                    Label(
-                        "\(plan.recentFolderEvictions.count) bookmarks moved from Recent to Other Bookmarks (kept the 20 most visited).",
-                        systemImage: "tray.and.arrow.down"
-                    )
-                    ForEach(recentFolderEvictions) { move in
-                        Text(move.title.isEmpty ? move.url : move.title)
-                            .lineLimit(1)
+            if !recentItems.isEmpty {
+                Section(sectionTitle("Recent", shown: recentItems.count, total: plan.recentItems.count, cap: FormatOptions.maxRecentItems)) {
+                    if !plan.recentAdditions.isEmpty || !plan.recentEvictions.isEmpty {
+                        moveSummaryLabel(
+                            added: plan.recentAdditions.count,
+                            evicted: plan.recentEvictions.count,
+                            systemImage: "clock.arrow.circlepath"
+                        )
+                    }
+                    ForEach(Array(recentItems.enumerated()), id: \.element.id) { index, item in
+                        curatedItemRow(index: index, item: item)
                     }
                 }
             }
 
-            if !recentFolderItems.isEmpty {
-                Section(sectionTitle("Recent — most visited first", shown: recentFolderItems.count, total: plan.recentFolderItems.count)) {
+            if plan.otherBookmarksReordered {
+                Section("Other Bookmarks") {
                     Label(
-                        "These bookmarks will appear in Recent, sorted by number of visits.",
-                        systemImage: "clock.arrow.circlepath"
+                        "Its own bookmarks and folders were sorted alphabetically. Nested subfolders elsewhere are left untouched.",
+                        systemImage: "arrow.up.arrow.down"
                     )
-                    ForEach(Array(recentFolderItems.enumerated()), id: \.element.id) { index, item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(index + 1). \(item.title.isEmpty ? item.url : item.title)")
-                                .lineLimit(1)
-                            Text(recentFolderItemDetail(item))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
                 }
             }
         }
     }
 
-    private func sectionTitle(_ label: String, shown: Int, total: Int) -> String {
-        shown == total ? "\(label) (\(total))" : "\(label) (\(shown) of \(total))"
+    private func curatedItemRow(index: Int, item: CuratedFolderItem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(index + 1). \(item.title.isEmpty ? item.url : item.title)")
+                .lineLimit(1)
+            Text(item.reason)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
-    /// Caption under a Recent item: visit count first (the sort key), then
-    /// when it was last opened if known.
-    private func recentFolderItemDetail(_ item: RecentFolderItem) -> String {
-        let visits = "\(item.visitCount) visit\(item.visitCount == 1 ? "" : "s")"
-        guard let lastOpenedAt = item.lastOpenedAt else { return visits }
-        return "\(visits) · last opened \(lastOpenedAt.formatted(date: .abbreviated, time: .shortened))"
+    private func moveSummaryLabel(added: Int, evicted: Int, systemImage: String) -> some View {
+        var parts: [String] = []
+        if added > 0 { parts.append("\(added) added") }
+        if evicted > 0 { parts.append("\(evicted) moved out") }
+        return Label(parts.joined(separator: ", "), systemImage: systemImage)
+    }
+
+    private func sectionTitle(_ label: String, shown: Int, total: Int, cap: Int) -> String {
+        let count = shown == total ? "\(total) of \(cap)" : "\(shown) of \(total)"
+        return "\(label) (\(count))"
+    }
+
+    private func sectionTitle(_ label: String, shown: Int, total: Int) -> String {
+        shown == total ? "\(label) (\(total))" : "\(label) (\(shown) of \(total))"
     }
 }

@@ -3,8 +3,8 @@ import Combine
 import Foundation
 import OSLog
 
-private enum SortRecentFolderError: Error {
-    case noRecentFolder
+private enum AnalysisError: Error {
+    case missingRequiredFolders(Set<RequiredFolder>)
 }
 
 /// Orchestrates Maruko's formatting flow: run the localhost server the
@@ -26,15 +26,11 @@ final class ExtensionFormatStore: ObservableObject {
     enum Phase: Equatable {
         case waitingForSession
         case analyzing
+        case missingRequiredFolders
         case awaitingConfirmation
         case waitingForExtension
         case applied
         case failed
-    }
-
-    struct TitleRefreshProgress: Equatable {
-        var processed: Int
-        var total: Int
     }
 
     @Published private(set) var serverState: ServerState = .stopped
@@ -42,15 +38,14 @@ final class ExtensionFormatStore: ObservableObject {
     @Published private(set) var extensionConnected = false
     @Published private(set) var phase: Phase = .waitingForSession
     @Published private(set) var plan: FormatPlan?
-    @Published private(set) var excludedTitleChangeIDs: Set<UUID> = []
-    @Published private(set) var titleRefreshProgress: TitleRefreshProgress?
+    @Published private(set) var missingFolders: Set<RequiredFolder> = []
     @Published private(set) var resultSummary: String?
     @Published private(set) var installState: ExtensionInstaller.ExportState = .notExported
     @Published var statusMessage: String?
     @Published var errorMessage: String?
 
-    /// What Format Bookmarks does. Editing an option re-runs analysis on
-    /// the retained payload if one is pending.
+    /// What Maruko does. Editing an option re-runs analysis on the retained
+    /// payload if one is pending.
     @Published var formatOptions: FormatOptions {
         didSet {
             guard formatOptions != oldValue else { return }
@@ -66,7 +61,6 @@ final class ExtensionFormatStore: ObservableObject {
     private let installer = ExtensionInstaller()
     private let snapshotWriter = ExtensionSnapshotWriter()
     private let logger = Logger(subsystem: "com.mellowfleet.Maruko", category: "ExtensionFormat")
-    private let webpageTitleRefresher: WebpageTitleRefresher
 
     private var server: ExtensionServer?
     private var sessionStore: ExtensionSessionStore?
@@ -77,12 +71,7 @@ final class ExtensionFormatStore: ObservableObject {
     private var lastPayload: ExtensionSessionPayload?
     private var pendingOps: BookmarkOps?
 
-    /// Wired by ContentView: rules stay owned by RewriteRulesStore so rule
-    /// editing is shared with the rest of the app.
-    private var rulesProvider: () throws -> [RewriteRuleSnapshot] = { [] }
-
-    init(webpageTitleRefresher: WebpageTitleRefresher = WebpageTitleRefresher()) {
-        self.webpageTitleRefresher = webpageTitleRefresher
+    init() {
         extensionConnected = UserDefaults.standard.bool(forKey: Self.hasPairedKey)
         if let data = UserDefaults.standard.data(forKey: Self.formatOptionsKey),
            let options = try? JSONDecoder().decode(FormatOptions.self, from: data) {
@@ -90,10 +79,6 @@ final class ExtensionFormatStore: ObservableObject {
         } else {
             formatOptions = .default
         }
-    }
-
-    func configure(rules: @escaping () throws -> [RewriteRuleSnapshot]) {
-        rulesProvider = rules
     }
 
     // MARK: - Server lifecycle
@@ -166,7 +151,7 @@ final class ExtensionFormatStore: ObservableObject {
     }
 
     private static func summary(for result: ExtensionApplyResult) -> String {
-        var text = "Removed \(result.counts.deleted) duplicates, rewrote \(result.counts.retitled) titles, moved \(result.counts.moved) bookmarks."
+        var text = "Removed \(result.counts.deleted) duplicates, moved \(result.counts.moved) bookmarks."
         if !result.errors.isEmpty {
             text += " \(result.errors.count) operations failed. See the extension popup for details."
         }
@@ -181,28 +166,13 @@ final class ExtensionFormatStore: ObservableObject {
         lastPayload = payload
         pendingOps = nil
         plan = nil
-        excludedTitleChangeIDs = []
+        missingFolders = []
         resultSummary = nil
         statusMessage = nil
         errorMessage = nil
-        titleRefreshProgress = nil
         phase = .analyzing
 
-        let rules: [RewriteRuleSnapshot]
-        do {
-            rules = try rulesProvider()
-        } catch {
-            failSession(sessionId, message: error.localizedDescription)
-            return
-        }
         let options = formatOptions
-
-        let progressHandler: @Sendable (Int, Int) -> Void = { processed, total in
-            Task { @MainActor [weak self] in
-                self?.titleRefreshProgress = TitleRefreshProgress(processed: processed, total: total)
-            }
-        }
-        let webpageTitleRefresher = self.webpageTitleRefresher
 
         let work = Task.detached(priority: .userInitiated) { () -> (FormatPlan, BookmarkOps) in
             let recentVisits = ExtensionHistoryMapper.recentVisits(
@@ -214,21 +184,13 @@ final class ExtensionFormatStore: ObservableObject {
             let originalOrders = ChromeBookmarkTreeAdapter.childOrders(tree: payload.tree)
             let trees = rooted.map { (rootKey: $0.rootKey, node: $0.node) }
 
-            var titleOverrides: [String: String] = [:]
-            if options.refreshTitlesFromWebpages {
-                let candidates = BookmarkTreeFormatter.webpageTitleCandidates(trees: trees)
-                titleOverrides = try await webpageTitleRefresher.refresh(
-                    candidates: candidates,
-                    progress: progressHandler
-                )
-            }
+            let missing = BookmarkTreeFormatter.missingRequiredFolders(in: trees)
+            guard missing.isEmpty else { throw AnalysisError.missingRequiredFolders(missing) }
 
-            let plan = BookmarkTreeFormatter.formatTree(
+            let plan = BookmarkTreeFormatter.curateTree(
                 trees: trees,
-                rules: rules,
-                options: options,
-                recentVisits: options.moveRecentToTop ? recentVisits : [:],
-                titleOverrides: titleOverrides
+                recentVisits: recentVisits,
+                options: options
             )
             let ops = ChromeOpListBuilder.makeOps(
                 originalChildOrders: originalOrders,
@@ -240,10 +202,7 @@ final class ExtensionFormatStore: ObservableObject {
         activeAnalysis = work
 
         Task {
-            defer {
-                titleRefreshProgress = nil
-                activeAnalysis = nil
-            }
+            defer { activeAnalysis = nil }
             do {
                 let (plan, ops) = try await work.value
                 guard currentSessionId == sessionId else { return }
@@ -251,12 +210,18 @@ final class ExtensionFormatStore: ObservableObject {
                 pendingOps = ops
                 phase = .awaitingConfirmation
                 sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
-                logger.info("Analyzed extension session: \(plan.totalBookmarks) bookmarks, \(plan.duplicates.count) duplicates, \(plan.titleChanges.count) title changes")
+                logger.info("Analyzed extension session: \(plan.totalBookmarks) bookmarks, \(plan.duplicates.count) duplicates")
             } catch is CancellationError {
                 guard currentSessionId == sessionId else { return }
                 statusMessage = "Analysis cancelled."
                 sessionStore?.cancel(sessionId: sessionId)
                 phase = .waitingForSession
+            } catch AnalysisError.missingRequiredFolders(let missing) {
+                guard currentSessionId == sessionId else { return }
+                missingFolders = missing
+                phase = .missingRequiredFolders
+                sessionStore?.fail(sessionId: sessionId)
+                logger.error("Extension analysis stopped: missing folders \(missing.map(\.rawValue).joined(separator: ", "), privacy: .public)")
             } catch {
                 guard currentSessionId == sessionId else { return }
                 failSession(sessionId, message: error.localizedDescription)
@@ -285,116 +250,13 @@ final class ExtensionFormatStore: ObservableObject {
         beginAnalysis(sessionId: sessionId, payload: payload)
     }
 
-    /// Curates the "Recent" folder on its own, independent of Format
-    /// Bookmarks and its `moveRecentToTop` toggle. Reuses the retained
-    /// payload from the current session rather than requiring a fresh Send
-    /// Bookmarks. This only works while a session is still live and
-    /// awaiting confirmation: the extension stops polling a session the
-    /// moment it goes terminal, and there's no way to hand it a session id
-    /// it didn't itself request, so `phase == .awaitingConfirmation` is a
-    /// hard precondition, not just a convenience check.
-    func sortRecentFolder() {
-        guard phase == .awaitingConfirmation,
-              let sessionId = currentSessionId,
-              let payload = lastPayload else { return }
-
-        activeAnalysis?.cancel()
-        let previousPlan = plan
-        let previousOps = pendingOps
-        statusMessage = nil
-        errorMessage = nil
-        phase = .analyzing
-        sessionStore?.markAnalyzing(sessionId: sessionId)
-
-        let options = formatOptions
-        let work = Task.detached(priority: .userInitiated) { () -> (FormatPlan, BookmarkOps) in
-            let recentVisits = ExtensionHistoryMapper.recentVisits(
-                history: payload.history,
-                cutoff: options.recencyCutoff
-            )
-            let rooted = try ChromeBookmarkTreeAdapter.adapt(tree: payload.tree)
-            let originalOrders = ChromeBookmarkTreeAdapter.childOrders(tree: payload.tree)
-            let trees = rooted.map { (rootKey: $0.rootKey, node: $0.node) }
-
-            guard let plan = BookmarkTreeFormatter.curateRecentFolderPlan(
-                trees: trees,
-                recentVisits: recentVisits
-            ) else { throw SortRecentFolderError.noRecentFolder }
-
-            let ops = ChromeOpListBuilder.makeOps(
-                originalChildOrders: originalOrders,
-                formattedTrees: rooted,
-                plan: plan
-            )
-            return (plan, ops)
-        }
-        activeAnalysis = work
-
-        Task {
-            defer { activeAnalysis = nil }
-            do {
-                let (newPlan, newOps) = try await work.value
-                guard currentSessionId == sessionId else { return }
-                plan = newPlan
-                pendingOps = newOps
-                phase = .awaitingConfirmation
-                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
-            } catch SortRecentFolderError.noRecentFolder {
-                guard currentSessionId == sessionId else { return }
-                statusMessage = "No folder named “Recent” was found. Nothing to sort."
-                plan = previousPlan
-                pendingOps = previousOps
-                phase = .awaitingConfirmation
-                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
-            } catch is CancellationError {
-                guard currentSessionId == sessionId else { return }
-                plan = previousPlan
-                pendingOps = previousOps
-                phase = .awaitingConfirmation
-                sessionStore?.markAwaitingConfirmation(sessionId: sessionId)
-            } catch {
-                guard currentSessionId == sessionId else { return }
-                failSession(sessionId, message: error.localizedDescription)
-            }
-        }
-    }
-
     // MARK: - Confirmation
-
-    var titleChangeApplyCount: Int {
-        plan?.titleChanges.count {
-            $0.nodeID != nil && !excludedTitleChangeIDs.contains($0.id)
-        } ?? 0
-    }
-
-    func setTitleChangeExcluded(_ change: TitleChange, excluded: Bool) {
-        guard change.nodeID != nil else { return }
-        if excluded {
-            excludedTitleChangeIDs.insert(change.id)
-        } else {
-            excludedTitleChangeIDs.remove(change.id)
-        }
-    }
-
-    func setTitleChangesExcluded(_ changes: [TitleChange], excluded: Bool) {
-        let ids = Set(changes.lazy.filter { $0.nodeID != nil }.map(\.id))
-        if excluded {
-            excludedTitleChangeIDs.formUnion(ids)
-        } else {
-            excludedTitleChangeIDs.subtract(ids)
-        }
-    }
 
     func confirm() {
         guard phase == .awaitingConfirmation,
               let sessionId = currentSessionId,
-              let plan,
               let pendingOps else { return }
-        let excludedNodeIDs = Set(plan.titleChanges.compactMap { change in
-            excludedTitleChangeIDs.contains(change.id) ? change.nodeID : nil
-        })
-        let ops = pendingOps.excludingRetitles(withNodeIDs: excludedNodeIDs)
-        sessionStore?.confirm(sessionId: sessionId, ops: ops)
+        sessionStore?.confirm(sessionId: sessionId, ops: pendingOps)
         phase = .waitingForExtension
     }
 

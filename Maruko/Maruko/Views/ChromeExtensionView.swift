@@ -13,43 +13,24 @@ struct ChromeExtensionView: View {
     @State private var filterText = ""
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                if let statusMessage = extensionStore.statusMessage {
-                    banner(statusMessage, systemImage: "checkmark.circle", tint: .green) {
-                        extensionStore.statusMessage = nil
-                    }
-                    Divider()
+        VStack(spacing: 0) {
+            if let statusMessage = extensionStore.statusMessage {
+                banner(statusMessage, systemImage: "checkmark.circle", tint: .green) {
+                    extensionStore.statusMessage = nil
                 }
-
-                setupSection
                 Divider()
-
-                content
             }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
+
+            setupSection
+            Divider()
+
+            content
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .navigationTitle("Chrome Extension")
         .searchable(text: $filterText, placement: .toolbar, prompt: "Filter by title or URL")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Menu {
-                    Toggle("Remove Duplicates", isOn: $extensionStore.formatOptions.removeDuplicates)
-                    Toggle("Rewrite Titles", isOn: $extensionStore.formatOptions.rewriteTitles)
-                    Toggle("Refresh Titles from Webpages", isOn: $extensionStore.formatOptions.refreshTitlesFromWebpages)
-                    Toggle("Move Recently Opened to Top", isOn: $extensionStore.formatOptions.moveRecentToTop)
-                } label: {
-                    Label("Format Options", systemImage: "slider.horizontal.3")
-                }
-                .disabled(extensionStore.phase == .analyzing)
-                .help("Choose what Format Bookmarks does")
-
-                Button("Sort Recent Folder") {
-                    extensionStore.sortRecentFolder()
-                }
-                .disabled(extensionStore.phase != .awaitingConfirmation)
-                .help("Sorts the \u{201C}Recent\u{201D} folder by number of visits, pulls in newly-visited bookmarks from Other Bookmarks, and keeps only the 20 most visited. Independent of Format Bookmarks.")
-
                 Button("Apply via Extension") {
                     showingApplyConfirmation = true
                 }
@@ -67,13 +48,7 @@ struct ChromeExtensionView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = extensionStore.plan {
-                let applicableCount = plan.titleChanges.count { $0.nodeID != nil }
-                let skippedCount = applicableCount - extensionStore.titleChangeApplyCount
-                if skippedCount > 0 {
-                    Text("\(plan.confirmationSummary)\n\n\(skippedCount) unchecked title \(skippedCount == 1 ? "change" : "changes") will be skipped.")
-                } else {
-                    Text(plan.confirmationSummary)
-                }
+                Text(plan.confirmationSummary)
             }
         }
         .task {
@@ -180,36 +155,23 @@ struct ChromeExtensionView: View {
             Spacer()
         case .analyzing:
             Spacer()
-            if let progress = extensionStore.titleRefreshProgress, progress.total > 0 {
-                VStack(spacing: 12) {
-                    ProgressView(value: Double(progress.processed), total: Double(progress.total)) {
-                        Text("Refreshing titles from webpages. \(progress.processed) of \(progress.total)…")
-                    }
-                    .frame(maxWidth: 420)
-
-                    Button("Cancel") {
-                        extensionStore.cancelAnalysis()
-                    }
-                }
-            } else {
-                ProgressView("Analyzing bookmarks…")
+            ProgressView("Analyzing bookmarks…")
+            Spacer()
+        case .missingRequiredFolders:
+            Spacer()
+            ContentUnavailableView {
+                Label("Create the required folders", systemImage: "folder.badge.plus")
+            } description: {
+                Text(missingFoldersDescription)
+            } actions: {
+                Text("Add them anywhere in Chrome's bookmarks, then press Send Bookmarks again.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Spacer()
         case .awaitingConfirmation:
             if let plan = extensionStore.plan {
-                FormatPlanListView(
-                    plan: plan,
-                    filterText: filterText,
-                    lastFormattedAt: nil,
-                    excludedTitleChangeIDs: extensionStore.excludedTitleChangeIDs,
-                    onToggleTitleChangeExcluded: { change in
-                        extensionStore.setTitleChangeExcluded(
-                            change,
-                            excluded: !extensionStore.excludedTitleChangeIDs.contains(change.id)
-                        )
-                    },
-                    onSetTitleChangesExcluded: extensionStore.setTitleChangesExcluded
-                )
+                FormatPlanListView(plan: plan, filterText: filterText, lastFormattedAt: nil)
             }
         case .waitingForExtension:
             Spacer()
@@ -242,6 +204,14 @@ struct ChromeExtensionView: View {
         }
     }
 
+    private var missingFoldersDescription: String {
+        let names = extensionStore.missingFolders
+            .sorted { $0.rawValue < $1.rawValue }
+            .map { "“\($0.rawValue)”" }
+            .joined(separator: " and ")
+        return "Maruko needs a folder named \(names) somewhere in your Chrome bookmarks to curate."
+    }
+
     private func banner(
         _ text: String,
         systemImage: String,
@@ -250,6 +220,7 @@ struct ChromeExtensionView: View {
     ) -> some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
+                .foregroundStyle(tint)
             Text(text)
             Spacer()
             if let dismiss {
@@ -262,6 +233,6 @@ struct ChromeExtensionView: View {
             }
         }
         .padding(10)
-        .background(tint.opacity(0.12))
+        .background(.thinMaterial)
     }
 }

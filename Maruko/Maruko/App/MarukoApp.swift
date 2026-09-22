@@ -1,23 +1,20 @@
 import SwiftUI
-import SwiftData
 
 @main
 struct MarukoApp: App {
     @StateObject private var updater = AppUpdater()
+    @StateObject private var extensionStore = ExtensionFormatStore()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(extensionStore: extensionStore)
         }
-        .modelContainer(AppModelContainer.shared)
         .commands {
             CheckForUpdatesCommands(updater: updater)
         }
 
-        Window("Rewrite Rules", id: "rewriteRules") {
-            RewriteRulesWindowView()
+        Settings {
+            SettingsView(extensionStore: extensionStore)
         }
-        .modelContainer(AppModelContainer.shared)
-        .defaultSize(width: 780, height: 520)
     }
 }

@@ -8,13 +8,15 @@ Maruko is a macOS app that cleans up bookmarks in the browsers you already use. 
 
 ## What it does
 
-- **Removes duplicates.** Bookmarks pointing at the same page (trailing slashes, fragments, query order, host case) are collapsed into one.
-- **Cleans up titles.** User-editable regex rules normalize messy bookmark titles (for example, turning a raw GitHub URL into `github owner/repo`). Maruko can also refresh the current HTML titles of up to 20 bookmarks in your **Recent** folder directly from their webpages.
-- **Surfaces what you actually use.** Bookmarks you opened in the last 7 days (per your Chrome history) move to the top of their folder, most visited first (ties broken by most recent visit). Everything else keeps its order, and the bookmark bar's own row is never reordered. Those icons stay exactly where you put them.
+Maruko manages exactly three folders, which must already exist somewhere in your Chrome bookmarks (Maruko never creates them for you):
 
-"Recently" always means the last 7 days; it isn't configurable. A shorter window never removes bookmarks from a "Recent" folder — items leave it only when the folder outgrows its 20-item cap.
+- **Routine** (up to 20 links). A curated, on-device heuristic recognizes the personal sites you check constantly (banking, shopping, insurance, health, travel) and the work tools you live in (incident response, cloud consoles, observability, work collaboration), and pulls them in from anywhere in your bookmarks. No network calls, no account data leaves your Mac.
+- **Recent** (up to 20 links). The bookmarks you've opened most in the last 30 days, most visited first.
+- **Other Bookmarks**. Everything else, left exactly where it is. Its own direct bookmarks and folders are sorted alphabetically; nested subfolders elsewhere are never touched.
 
-Each step can be switched on or off in the Format Options menu (including webpage-title refresh), and the regex title rules are fully editable. Webpage-title refresh is off by default.
+Maruko also **removes duplicates**: bookmarks pointing at the same page (trailing slashes, fragments, query order, host case) are collapsed into one, everywhere in the tree.
+
+A bookmark that qualifies for both Routine and Recent counts only toward Routine.
 
 ## How it works
 

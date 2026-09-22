@@ -1,9 +1,10 @@
 import Foundation
 
-/// In-memory tree projection of one Chromium bookmark root. Not a SwiftData
-/// model: it exists only between reading a `Bookmarks` file and writing it
-/// back. Each node keeps its original raw dictionary so serialization
-/// preserves every key the browser stored (guid, dates, meta_info, …).
+/// In-memory tree projection of one Chromium bookmark root. It exists only
+/// between reading a `Bookmarks` file (or an adapted chrome.bookmarks tree)
+/// and writing it back. Each node keeps its original raw dictionary so
+/// serialization preserves every key the browser stored (guid, dates,
+/// meta_info, …).
 nonisolated final class BookmarkNode {
     enum Kind {
         case folder
@@ -16,6 +17,14 @@ nonisolated final class BookmarkNode {
     let normalizedURL: String?
     var children: [BookmarkNode]
     let raw: [String: Any]
+
+    /// Lowercased host with any `www.` prefix stripped, or `nil` for
+    /// folders and unparsable URLs. Used by `RoutineClassifier`.
+    var host: String? {
+        guard var host = url.flatMap({ URLComponents(string: $0)?.host })?.lowercased() else { return nil }
+        if host.hasPrefix("www.") { host.removeFirst(4) }
+        return host
+    }
 
     init?(raw: [String: Any]) {
         guard let type = raw["type"] as? String else { return nil }
