@@ -40,12 +40,12 @@ extension BookmarkOps {
 
 /// Turns a formatted tree + its change plan into `BookmarkOps`. Deletes come
 /// straight from the plan's duplicate-removal records (which carry the
-/// chrome node id); moves come from the plan's Routine/Recent addition and
-/// eviction records; reorders are the one diff. A folder's final child ids
-/// against its original order minus the deleted ids. A folder that merely
-/// gained or lost children at the tail (e.g. Other Bookmarks after a
-/// Routine/Recent move) without any actual repositioning among what stayed
-/// doesn't get a reorder op. For a folder with thousands of children,
+/// chrome node id); moves come from the plan's Recent addition and eviction
+/// records; reorders are the one diff. A folder's final child ids against
+/// its original order minus the deleted ids. A folder that merely gained or
+/// lost children at the tail (e.g. Other Bookmarks after a Recent move)
+/// without any actual repositioning among what stayed doesn't get a reorder
+/// op. For a folder with thousands of children,
 /// emitting one anyway is enormously expensive for the extension to apply
 /// (it has to fetch and index-compare the whole child list) for a change
 /// that never needed repositioning in the first place.
@@ -61,9 +61,7 @@ nonisolated enum ChromeOpListBuilder {
         // (always empty) so the extension, which reads it unconditionally,
         // doesn't need to be reloaded for this change to take effect.
         ops.retitles = []
-        ops.moves = (
-            plan.routineAdditions + plan.routineEvictions + plan.recentAdditions + plan.recentEvictions
-        ).compactMap { move in
+        ops.moves = (plan.recentAdditions + plan.recentEvictions).compactMap { move in
             guard let id = move.nodeID, let toFolderId = move.toFolderID else { return nil }
             return BookmarkOps.Move(id: id, toFolderId: toFolderId)
         }

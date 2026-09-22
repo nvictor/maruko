@@ -18,14 +18,6 @@ nonisolated final class BookmarkNode {
     var children: [BookmarkNode]
     let raw: [String: Any]
 
-    /// Lowercased host with any `www.` prefix stripped, or `nil` for
-    /// folders and unparsable URLs. Used by `RoutineClassifier`.
-    var host: String? {
-        guard var host = url.flatMap({ URLComponents(string: $0)?.host })?.lowercased() else { return nil }
-        if host.hasPrefix("www.") { host.removeFirst(4) }
-        return host
-    }
-
     init?(raw: [String: Any]) {
         guard let type = raw["type"] as? String else { return nil }
         self.raw = raw

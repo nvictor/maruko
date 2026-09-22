@@ -11,7 +11,7 @@ struct DuplicateRemoval: Identifiable, Sendable {
     var nodeID: String?
 }
 
-/// A bookmark added to, or evicted from, "Routine" or "Recent".
+/// A bookmark added to, or evicted from, "Recent".
 struct FolderMove: Identifiable, Sendable {
     let id = UUID()
     let title: String
@@ -25,8 +25,7 @@ struct FolderMove: Identifiable, Sendable {
     var toFolderID: String?
 }
 
-/// A bookmark's final position in "Routine" or "Recent", in the order it
-/// will be applied.
+/// A bookmark's final position in "Recent", in the order it will be applied.
 struct CuratedFolderItem: Identifiable, Sendable {
     let id = UUID()
     let title: String
@@ -46,14 +45,6 @@ struct RecentVisit: Sendable, Equatable {
 struct FormatPlan: Sendable {
     let duplicates: [DuplicateRemoval]
 
-    let routineAdditions: [FolderMove]
-    let routineEvictions: [FolderMove]
-    /// Final URL contents of "Routine", in the order that will be applied.
-    let routineItems: [CuratedFolderItem]
-    /// True when "Routine"'s order changed even without any addition or
-    /// eviction (e.g. two already-resident items swapped rank).
-    let routineReordered: Bool
-
     let recentAdditions: [FolderMove]
     let recentEvictions: [FolderMove]
     /// Final URL contents of "Recent", in the order that will be applied.
@@ -68,7 +59,6 @@ struct FormatPlan: Sendable {
 
     var isEmpty: Bool {
         duplicates.isEmpty
-            && routineAdditions.isEmpty && routineEvictions.isEmpty && !routineReordered
             && recentAdditions.isEmpty && recentEvictions.isEmpty && !recentReordered
             && !otherBookmarksReordered
     }
@@ -84,9 +74,6 @@ struct FormatPlan: Sendable {
         }
     }
 
-    func routineAdditions(matching query: String) -> [FolderMove] { Self.filter(routineAdditions, matching: query) }
-    func routineEvictions(matching query: String) -> [FolderMove] { Self.filter(routineEvictions, matching: query) }
-    func routineItems(matching query: String) -> [CuratedFolderItem] { Self.filter(routineItems, matching: query) }
     func recentAdditions(matching query: String) -> [FolderMove] { Self.filter(recentAdditions, matching: query) }
     func recentEvictions(matching query: String) -> [FolderMove] { Self.filter(recentEvictions, matching: query) }
     func recentItems(matching query: String) -> [CuratedFolderItem] { Self.filter(recentItems, matching: query) }
@@ -112,11 +99,6 @@ struct FormatPlan: Sendable {
     var confirmationSummary: String {
         var clauses: [String] = []
         if !duplicates.isEmpty { clauses.append("removes \(duplicates.count) duplicates") }
-        if !routineAdditions.isEmpty || !routineEvictions.isEmpty {
-            clauses.append("updates Routine (\(routineAdditions.count) added, \(routineEvictions.count) moved out)")
-        } else if routineReordered {
-            clauses.append("sorts Routine")
-        }
         if !recentAdditions.isEmpty || !recentEvictions.isEmpty {
             clauses.append("updates Recent (\(recentAdditions.count) added, \(recentEvictions.count) moved out)")
         } else if recentReordered {
@@ -129,22 +111,20 @@ struct FormatPlan: Sendable {
     }
 }
 
-/// The two folders Maruko manages. Must already exist somewhere in the
-/// user's Chrome bookmarks, found by exact (case-insensitive) title, the
-/// same way "Recent" used to be found. Maruko never creates them.
+/// The folder Maruko manages. Must already exist somewhere in the user's
+/// Chrome bookmarks, found by exact (case-insensitive) title. Maruko never
+/// creates it.
 nonisolated enum RequiredFolder: String, CaseIterable, Sendable {
-    case routine = "Routine"
     case recent = "Recent"
 }
 
-/// Curates Maruko's three managed folders. Remove duplicate URLs, then
-/// classify every remaining bookmark in the tree into "Routine" (curated,
-/// on-device heuristic; personal + work sites used constantly) or "Recent"
-/// (most accessed in the last 30 days), capping each at 20 and evicting
-/// whatever doesn't make the cut back to "Other Bookmarks". Everything else
-/// is left exactly where it is; "Other Bookmarks" own direct children are
-/// sorted alphabetically as its one folder-specific rule. The trees are
-/// mutated in place with the result.
+/// Curates Maruko's managed folders. Remove duplicate URLs, then classify
+/// every remaining bookmark in the tree into "Recent" (most accessed in the
+/// last 30 days), capping it at 20 and evicting whatever doesn't make the
+/// cut back to "Other Bookmarks". Everything else is left exactly where it
+/// is; "Other Bookmarks" own direct children are sorted alphabetically as
+/// its one folder-specific rule. The trees are mutated in place with the
+/// result.
 nonisolated enum BookmarkTreeFormatter {
     /// The first folder matching `name` exactly (trimmed, case-insensitive),
     /// found via depth-first search across the given roots in a fixed order
@@ -174,8 +154,8 @@ nonisolated enum BookmarkTreeFormatter {
         return nil
     }
 
-    /// "Routine" and/or "Recent" folders not found anywhere in the tree.
-    /// Callers must check this is empty before calling `curateTree`.
+    /// Required folders not found anywhere in the tree. Callers must check
+    /// this is empty before calling `curateTree`.
     static func missingRequiredFolders(in trees: [(rootKey: String, node: BookmarkNode)]) -> Set<RequiredFolder> {
         var missing: Set<RequiredFolder> = []
         for folder in RequiredFolder.allCases where findNamedFolder(folder.rawValue, in: trees) == nil {
@@ -225,16 +205,15 @@ nonisolated enum BookmarkTreeFormatter {
     }
 
     /// One remaining URL bookmark under consideration, with its current
-    /// parent folder and how it scores against each curated folder.
+    /// parent folder and how it scores against "Recent".
     private struct Candidate {
         let node: BookmarkNode
         let parent: BookmarkNode
-        let match: RoutineMatch?
         let visit: RecentVisit?
     }
 
-    /// A candidate that made a folder's top-N cut, carrying the reason
-    /// shown in the plan preview.
+    /// A candidate that made "Recent"'s top-N cut, carrying the reason shown
+    /// in the plan preview.
     private struct RankedItem {
         let node: BookmarkNode
         let parent: BookmarkNode
@@ -243,20 +222,12 @@ nonisolated enum BookmarkTreeFormatter {
 
     /// `rootKey` follows the Bookmarks-file naming convention
     /// ("bookmark_bar", "other", "synced") that `ChromeBookmarkTreeAdapter`
-    /// maps chrome.bookmarks roots onto. Requires "Routine" and "Recent" to
-    /// already exist in `trees` — check `missingRequiredFolders` first.
-    ///
-    /// `pinnedRoutineNodeIDs` are chrome node ids of bookmarks currently
-    /// sitting directly in "Routine" that the user has chosen to keep even
-    /// though they wouldn't otherwise make the cut (declined eviction).
-    /// Pinned items always survive, at the expense of one of the 20 slots
-    /// that would otherwise go to a newly-ranked candidate — so pinning one
-    /// more item can knock a would-be addition back out.
+    /// maps chrome.bookmarks roots onto. Requires "Recent" to already exist
+    /// in `trees` — check `missingRequiredFolders` first.
     static func curateTree(
         trees: [(rootKey: String, node: BookmarkNode)],
         recentVisits: [String: RecentVisit] = [:],
-        options: FormatOptions = .default,
-        pinnedRoutineNodeIDs: Set<String> = []
+        options: FormatOptions = .default
     ) -> FormatPlan {
         let roots = trees.map(\.node)
         let duplicates = options.removeDuplicates ? removeDuplicates(in: roots) : []
@@ -275,27 +246,25 @@ nonisolated enum BookmarkTreeFormatter {
             return (totalBookmarks, max(0, totalFolders - roots.count))
         }
 
-        guard let routineFolder = findNamedFolder(RequiredFolder.routine.rawValue, in: trees),
-              let recentFolder = findNamedFolder(RequiredFolder.recent.rawValue, in: trees) else {
+        guard let recentFolder = findNamedFolder(RequiredFolder.recent.rawValue, in: trees) else {
             let (bookmarks, folders) = totals()
             return FormatPlan(
                 duplicates: duplicates,
-                routineAdditions: [], routineEvictions: [], routineItems: [], routineReordered: false,
                 recentAdditions: [], recentEvictions: [], recentItems: [], recentReordered: false,
                 otherBookmarksReordered: false,
                 totalBookmarks: bookmarks, totalFolders: folders
             )
         }
         let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
+        let barRoot = trees.first(where: { $0.rootKey == "bookmark_bar" })?.node
 
         // Collect every remaining URL bookmark, tree-wide, with its current
-        // parent. "Routine" and "Recent"'s own subfolders are left
-        // completely untouched: walk their direct URL children (candidates
-        // for keep/evict) but never recurse into a subfolder living inside
-        // them.
+        // parent. "Recent"'s own subfolders are left completely untouched:
+        // walk its direct URL children (candidates for keep/evict) but
+        // never recurse into a subfolder living inside it.
         var candidates: [Candidate] = []
         func collect(_ folder: BookmarkNode) {
-            let isManaged = folder === routineFolder || folder === recentFolder
+            let isManaged = folder === recentFolder
             for child in folder.children {
                 switch child.kind {
                 case .url:
@@ -303,7 +272,6 @@ nonisolated enum BookmarkTreeFormatter {
                         Candidate(
                             node: child,
                             parent: folder,
-                            match: RoutineClassifier.classify(url: child.url, title: child.title),
                             visit: child.normalizedURL.flatMap { recentVisits[$0] }
                         )
                     )
@@ -315,37 +283,11 @@ nonisolated enum BookmarkTreeFormatter {
         }
         for root in roots { collect(root) }
 
-        // A bookmark the user has explicitly kept despite eviction is
-        // guaranteed a Routine slot, whether or not it still matches a
-        // category, and is pulled out of both pools so it isn't also
-        // competed for or double-counted.
-        let pinned = candidates.filter {
-            $0.parent === routineFolder
-                && pinnedRoutineNodeIDs.contains($0.node.raw["id"] as? String ?? "")
-        }
-        let pinnedNodeIdentifiers = Set(pinned.map { ObjectIdentifier($0.node) })
-        let pinnedRanked = pinned.map {
-            RankedItem(node: $0.node, parent: $0.parent, reason: $0.match?.label ?? "Kept — you chose not to move this out")
-        }
-
-        // Routine takes precedence: a bookmark matching a routine category
-        // counts only toward Routine, even if it also has recent-visit data.
-        let routineCandidates = candidates.filter { $0.match != nil && !pinnedNodeIdentifiers.contains(ObjectIdentifier($0.node)) }
-        let recentCandidates = candidates.filter {
-            $0.match == nil && $0.visit != nil && !pinnedNodeIdentifiers.contains(ObjectIdentifier($0.node))
-        }
-
-        let remainingRoutineSlots = max(0, FormatOptions.maxRoutineItems - pinnedRanked.count)
-        let rankedRoutine = pinnedRanked + routineCandidates
-            .sorted { a, b in
-                if a.match!.strength != b.match!.strength { return a.match!.strength > b.match!.strength }
-                let visitA = a.visit?.visitCount ?? 0
-                let visitB = b.visit?.visitCount ?? 0
-                if visitA != visitB { return visitA > visitB }
-                return a.node.title.localizedCaseInsensitiveCompare(b.node.title) == .orderedAscending
-            }
-            .prefix(remainingRoutineSlots)
-            .map { RankedItem(node: $0.node, parent: $0.parent, reason: $0.match!.label) }
+        // Bookmarks sitting loose directly on the bar (not inside a
+        // subfolder) are already at maximum visibility by being there; being
+        // frequently used is *why* they're on the bar, not a reason to also
+        // pull them into "Recent".
+        let recentCandidates = candidates.filter { $0.visit != nil && $0.parent !== barRoot }
 
         let rankedRecent = recentCandidates
             .sorted { a, b in
@@ -355,16 +297,6 @@ nonisolated enum BookmarkTreeFormatter {
             .prefix(FormatOptions.maxRecentItems)
             .map { RankedItem(node: $0.node, parent: $0.parent, reason: Self.recentReason($0.visit!)) }
 
-        let routineResult = applyFolderCuration(
-            target: routineFolder,
-            kept: Array(rankedRoutine),
-            otherRoot: otherRoot,
-            evictionReason: { node in
-                RoutineClassifier.classify(url: node.url, title: node.title) != nil
-                    ? "Ranked outside the top \(FormatOptions.maxRoutineItems)"
-                    : "No longer matches a routine category"
-            }
-        )
         let recentResult = applyFolderCuration(
             target: recentFolder,
             kept: Array(rankedRecent),
@@ -386,10 +318,6 @@ nonisolated enum BookmarkTreeFormatter {
         let (bookmarks, folders) = totals()
         return FormatPlan(
             duplicates: duplicates,
-            routineAdditions: routineResult.additions,
-            routineEvictions: routineResult.evictions,
-            routineItems: routineResult.items,
-            routineReordered: routineResult.reordered,
             recentAdditions: recentResult.additions,
             recentEvictions: recentResult.evictions,
             recentItems: recentResult.items,

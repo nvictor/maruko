@@ -9,8 +9,6 @@ nonisolated struct FormatOptions: Codable, Equatable, Sendable {
 
     /// How far back "most accessed" reaches, in days. Fixed, not user-editable.
     static let recencyWindowDays = 30
-    /// Maximum number of direct URL children kept in "Routine".
-    static let maxRoutineItems = 20
     /// Maximum number of direct URL children kept in "Recent".
     static let maxRecentItems = 20
 

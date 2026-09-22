@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Maruko's Settings window (Cmd+,). What Maruko does is opinionated by
-/// design (Routine/Recent curation always runs); deduplication is the one
+/// design (Recent curation always runs); deduplication is the one
 /// independent, low-risk toggle.
 struct SettingsView: View {
     @ObservedObject var extensionStore: ExtensionFormatStore

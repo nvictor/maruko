@@ -5,14 +5,9 @@ struct FormatPlanListView: View {
     let plan: FormatPlan
     let filterText: String
     let lastFormattedAt: Date?
-    /// "Routine" is personal enough that evictions need a per-item chance
-    /// to say no, unlike "Recent"'s purely usage-driven churn.
-    let onKeepInRoutine: (FolderMove) -> Void
 
     var body: some View {
         let duplicates = plan.duplicates(matching: filterText)
-        let routineItems = plan.routineItems(matching: filterText)
-        let routineEvictions = plan.routineEvictions(matching: filterText)
         let recentItems = plan.recentItems(matching: filterText)
         let isFiltering = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
@@ -29,7 +24,7 @@ struct FormatPlanListView: View {
                 }
             }
 
-            if isFiltering, duplicates.isEmpty, routineItems.isEmpty, routineEvictions.isEmpty, recentItems.isEmpty, !plan.isEmpty {
+            if isFiltering, duplicates.isEmpty, recentItems.isEmpty, !plan.isEmpty {
                 ContentUnavailableView.search(text: filterText)
             }
 
@@ -44,31 +39,6 @@ struct FormatPlanListView: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
-                    }
-                }
-            }
-
-            if !routineItems.isEmpty {
-                Section(sectionTitle("Routine", shown: routineItems.count, total: plan.routineItems.count, cap: FormatOptions.maxRoutineItems)) {
-                    if !plan.routineAdditions.isEmpty {
-                        Label("\(plan.routineAdditions.count) added", systemImage: "sparkles")
-                    }
-                    ForEach(Array(routineItems.enumerated()), id: \.element.id) { index, item in
-                        curatedItemRow(index: index, item: item)
-                    }
-                }
-            }
-
-            if !routineEvictions.isEmpty {
-                Section(sectionTitle("Moving out of Routine", shown: routineEvictions.count, total: plan.routineEvictions.count)) {
-                    Label(
-                        "These no longer make the top \(FormatOptions.maxRoutineItems). Keep one and it stays, taking up a slot a new bookmark would otherwise fill.",
-                        systemImage: "hand.raised"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    ForEach(routineEvictions) { move in
-                        routineEvictionRow(move)
                     }
                 }
             }
@@ -106,27 +76,6 @@ struct FormatPlanListView: View {
             Text(item.reason)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-        }
-    }
-
-    private func routineEvictionRow(_ move: FolderMove) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(move.title.isEmpty ? move.url : move.title)
-                    .lineLimit(1)
-                Text(move.reason)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button {
-                onKeepInRoutine(move)
-            } label: {
-                Label("Keep", systemImage: "pin")
-            }
-            .controlSize(.small)
-            .disabled(move.nodeID == nil)
-            .help(move.nodeID == nil ? "This preview item has no Chrome bookmark ID and can't be kept." : "Keep this in Routine instead of moving it out.")
         }
     }
 

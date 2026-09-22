@@ -19,7 +19,6 @@ struct ChromeOpListBuilderTests {
 
     private let emptyPlan = FormatPlan(
         duplicates: [],
-        routineAdditions: [], routineEvictions: [], routineItems: [], routineReordered: false,
         recentAdditions: [], recentEvictions: [], recentItems: [], recentReordered: false,
         otherBookmarksReordered: false,
         totalBookmarks: 0, totalFolders: 0
@@ -37,7 +36,6 @@ struct ChromeOpListBuilderTests {
         let duplicates = BookmarkTreeFormatter.removeDuplicates(in: trees.map(\.node))
         let plan = FormatPlan(
             duplicates: duplicates,
-            routineAdditions: [], routineEvictions: [], routineItems: [], routineReordered: false,
             recentAdditions: [], recentEvictions: [], recentItems: [], recentReordered: false,
             otherBookmarksReordered: false,
             totalBookmarks: 0, totalFolders: 0
@@ -64,8 +62,8 @@ struct ChromeOpListBuilderTests {
         #expect(ops.isEmpty)
     }
 
-    // MARK: - Routine/Recent moves and reorder economy (built inline, with
-    // "Routine" and "Recent" present, so `curateTree` can run end to end)
+    // MARK: - Recent moves and reorder economy (built inline, with "Recent"
+    // present, so `curateTree` can run end to end)
 
     private func chromeNode(
         _ id: String,
@@ -86,9 +84,8 @@ struct ChromeOpListBuilderTests {
             recentChildren.append(chromeNode("r\(i)", "Item \(i)", url: url))
             visits[url] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
-        let routine = chromeNode("routine", "Routine", folderType: nil, children: [])
         let recent = chromeNode("10", "Recent", folderType: nil, children: recentChildren)
-        let bar = chromeNode("1", "Bookmarks Bar", folderType: "bookmarks-bar", children: [routine, recent])
+        let bar = chromeNode("1", "Bookmarks Bar", folderType: "bookmarks-bar", children: [recent])
         let other = chromeNode("2", "Other Bookmarks", folderType: "other", children: [])
         let syntheticRoot = chromeNode("0", "", children: [bar, other])
 
@@ -139,9 +136,8 @@ struct ChromeOpListBuilderTests {
             visits["https://r\(i).example.com/"] = RecentVisit(lastVisitedAt: now.addingTimeInterval(Double(i)), visitCount: i)
         }
 
-        let routine = chromeNode("routine", "Routine", children: [])
         let recent = chromeNode("10", "Recent", children: recentChildren)
-        let bar = chromeNode("1", "Bookmarks Bar", folderType: "bookmarks-bar", children: [routine, recent])
+        let bar = chromeNode("1", "Bookmarks Bar", folderType: "bookmarks-bar", children: [recent])
         let other = chromeNode("2", "Other Bookmarks", folderType: "other", children: otherChildren)
         let syntheticRoot = chromeNode("0", "", children: [bar, other])
 
@@ -161,28 +157,5 @@ struct ChromeOpListBuilderTests {
         // relative order (already alphabetical); gaining one appended child
         // at the tail doesn't reposition any of them.
         #expect(!ops.reorders.contains { $0.folderId == "2" })
-    }
-
-    @Test func routineAdditionFromTheBookmarkBarEmitsAMoveWithoutReorderingTheBar() throws {
-        let routine = chromeNode("routine", "Routine", children: [])
-        let recent = chromeNode("recent", "Recent", children: [])
-        let kept = chromeNode("kept", "Kept", url: "https://kept.example.com/")
-        let chase = chromeNode("chase", "Chase", url: "https://chase.com/")
-        let bar = chromeNode("1", "Bookmarks Bar", folderType: "bookmarks-bar", children: [routine, recent, kept, chase])
-        let other = chromeNode("2", "Other Bookmarks", folderType: "other", children: [])
-        let syntheticRoot = chromeNode("0", "", children: [bar, other])
-
-        let trees = try ChromeBookmarkTreeAdapter.adapt(tree: [syntheticRoot])
-        let orders = ChromeBookmarkTreeAdapter.childOrders(tree: [syntheticRoot])
-        let plan = BookmarkTreeFormatter.curateTree(
-            trees: trees.map { (rootKey: $0.rootKey, node: $0.node) },
-            recentVisits: [:]
-        )
-        let ops = ChromeOpListBuilder.makeOps(originalChildOrders: orders, formattedTrees: trees, plan: plan)
-
-        #expect(ops.moves == [BookmarkOps.Move(id: "chase", toFolderId: "routine")])
-        // The bar loses "chase" but "kept" doesn't reposition relative to
-        // the two managed folders, so no reorder op is needed for the bar.
-        #expect(!ops.reorders.contains { $0.folderId == "1" })
     }
 }

@@ -31,9 +31,12 @@ struct ChromeExtensionView: View {
         .searchable(text: $filterText, placement: .toolbar, prompt: "Filter by title or URL")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Apply via Extension") {
+                Button {
                     showingApplyConfirmation = true
+                } label: {
+                    Image(systemName: "checkmark.circle")
                 }
+                .help("Apply via Extension")
                 .disabled(extensionStore.phase != .awaitingConfirmation || extensionStore.plan?.isEmpty == true)
             }
         }
@@ -160,11 +163,11 @@ struct ChromeExtensionView: View {
         case .missingRequiredFolders:
             Spacer()
             ContentUnavailableView {
-                Label("Create the required folders", systemImage: "folder.badge.plus")
+                Label("Create the required folder", systemImage: "folder.badge.plus")
             } description: {
                 Text(missingFoldersDescription)
             } actions: {
-                Text("Add them anywhere in Chrome's bookmarks, then press Send Bookmarks again.")
+                Text("Add it anywhere in Chrome's bookmarks, then press Send Bookmarks again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -174,8 +177,7 @@ struct ChromeExtensionView: View {
                 FormatPlanListView(
                     plan: plan,
                     filterText: filterText,
-                    lastFormattedAt: nil,
-                    onKeepInRoutine: extensionStore.keepInRoutine
+                    lastFormattedAt: nil
                 )
             }
         case .waitingForExtension:
