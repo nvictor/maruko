@@ -245,10 +245,18 @@ nonisolated enum BookmarkTreeFormatter {
     /// ("bookmark_bar", "other", "synced") that `ChromeBookmarkTreeAdapter`
     /// maps chrome.bookmarks roots onto. Requires "Routine" and "Recent" to
     /// already exist in `trees` — check `missingRequiredFolders` first.
+    ///
+    /// `pinnedRoutineNodeIDs` are chrome node ids of bookmarks currently
+    /// sitting directly in "Routine" that the user has chosen to keep even
+    /// though they wouldn't otherwise make the cut (declined eviction).
+    /// Pinned items always survive, at the expense of one of the 20 slots
+    /// that would otherwise go to a newly-ranked candidate — so pinning one
+    /// more item can knock a would-be addition back out.
     static func curateTree(
         trees: [(rootKey: String, node: BookmarkNode)],
         recentVisits: [String: RecentVisit] = [:],
-        options: FormatOptions = .default
+        options: FormatOptions = .default,
+        pinnedRoutineNodeIDs: Set<String> = []
     ) -> FormatPlan {
         let roots = trees.map(\.node)
         let duplicates = options.removeDuplicates ? removeDuplicates(in: roots) : []
@@ -307,12 +315,28 @@ nonisolated enum BookmarkTreeFormatter {
         }
         for root in roots { collect(root) }
 
+        // A bookmark the user has explicitly kept despite eviction is
+        // guaranteed a Routine slot, whether or not it still matches a
+        // category, and is pulled out of both pools so it isn't also
+        // competed for or double-counted.
+        let pinned = candidates.filter {
+            $0.parent === routineFolder
+                && pinnedRoutineNodeIDs.contains($0.node.raw["id"] as? String ?? "")
+        }
+        let pinnedNodeIdentifiers = Set(pinned.map { ObjectIdentifier($0.node) })
+        let pinnedRanked = pinned.map {
+            RankedItem(node: $0.node, parent: $0.parent, reason: $0.match?.label ?? "Kept — you chose not to move this out")
+        }
+
         // Routine takes precedence: a bookmark matching a routine category
         // counts only toward Routine, even if it also has recent-visit data.
-        let routineCandidates = candidates.filter { $0.match != nil }
-        let recentCandidates = candidates.filter { $0.match == nil && $0.visit != nil }
+        let routineCandidates = candidates.filter { $0.match != nil && !pinnedNodeIdentifiers.contains(ObjectIdentifier($0.node)) }
+        let recentCandidates = candidates.filter {
+            $0.match == nil && $0.visit != nil && !pinnedNodeIdentifiers.contains(ObjectIdentifier($0.node))
+        }
 
-        let rankedRoutine = routineCandidates
+        let remainingRoutineSlots = max(0, FormatOptions.maxRoutineItems - pinnedRanked.count)
+        let rankedRoutine = pinnedRanked + routineCandidates
             .sorted { a, b in
                 if a.match!.strength != b.match!.strength { return a.match!.strength > b.match!.strength }
                 let visitA = a.visit?.visitCount ?? 0
@@ -320,7 +344,7 @@ nonisolated enum BookmarkTreeFormatter {
                 if visitA != visitB { return visitA > visitB }
                 return a.node.title.localizedCaseInsensitiveCompare(b.node.title) == .orderedAscending
             }
-            .prefix(FormatOptions.maxRoutineItems)
+            .prefix(remainingRoutineSlots)
             .map { RankedItem(node: $0.node, parent: $0.parent, reason: $0.match!.label) }
 
         let rankedRecent = recentCandidates

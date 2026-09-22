@@ -39,6 +39,11 @@ final class ExtensionFormatStore: ObservableObject {
     @Published private(set) var phase: Phase = .waitingForSession
     @Published private(set) var plan: FormatPlan?
     @Published private(set) var missingFolders: Set<RequiredFolder> = []
+    /// Chrome node ids of "Routine" bookmarks the user has chosen to keep
+    /// despite eviction. Reset only when a genuinely new session arrives
+    /// (see `.sessionReceived`), not by `reanalyzeIfNeeded`, so a pin
+    /// survives the re-analysis it itself triggers.
+    @Published private(set) var routinePinnedNodeIDs: Set<String> = []
     @Published private(set) var resultSummary: String?
     @Published private(set) var installState: ExtensionInstaller.ExportState = .notExported
     @Published var statusMessage: String?
@@ -142,6 +147,7 @@ final class ExtensionFormatStore: ObservableObject {
             } catch {
                 logger.error("Snapshot failed: \(error.localizedDescription, privacy: .public)")
             }
+            routinePinnedNodeIDs = []
             beginAnalysis(sessionId: sessionId, payload: payload)
         case .resultReceived(let sessionId, let result):
             guard sessionId == currentSessionId else { return }
@@ -173,6 +179,7 @@ final class ExtensionFormatStore: ObservableObject {
         phase = .analyzing
 
         let options = formatOptions
+        let pinnedRoutineNodeIDs = routinePinnedNodeIDs
 
         let work = Task.detached(priority: .userInitiated) { () -> (FormatPlan, BookmarkOps) in
             let recentVisits = ExtensionHistoryMapper.recentVisits(
@@ -190,7 +197,8 @@ final class ExtensionFormatStore: ObservableObject {
             let plan = BookmarkTreeFormatter.curateTree(
                 trees: trees,
                 recentVisits: recentVisits,
-                options: options
+                options: options,
+                pinnedRoutineNodeIDs: pinnedRoutineNodeIDs
             )
             let ops = ChromeOpListBuilder.makeOps(
                 originalChildOrders: originalOrders,
@@ -238,6 +246,16 @@ final class ExtensionFormatStore: ObservableObject {
 
     func cancelAnalysis() {
         activeAnalysis?.cancel()
+    }
+
+    /// The user declined to let this bookmark be moved out of "Routine".
+    /// It's guaranteed to stay, at the cost of one of the 20 slots — which
+    /// may bump the lowest-ranked new candidate back out. Re-runs analysis
+    /// on the retained payload; no re-send needed.
+    func keepInRoutine(_ move: FolderMove) {
+        guard let nodeID = move.nodeID else { return }
+        routinePinnedNodeIDs.insert(nodeID)
+        reanalyzeIfNeeded()
     }
 
     /// Format options changed while a plan was pending. Re-run the

@@ -10,7 +10,7 @@ Maruko is a macOS app that cleans up bookmarks in the browsers you already use. 
 
 Maruko manages exactly three folders, which must already exist somewhere in your Chrome bookmarks (Maruko never creates them for you):
 
-- **Routine** (up to 20 links). A curated, on-device heuristic recognizes the personal sites you check constantly (banking, shopping, insurance, health, travel) and the work tools you live in (incident response, cloud consoles, observability, work collaboration), and pulls them in from anywhere in your bookmarks. No network calls, no account data leaves your Mac.
+- **Routine** (up to 20 links). A curated, on-device heuristic recognizes the personal sites you check constantly (banking, shopping, insurance, health, travel) and the work tools you live in (incident response, cloud consoles, observability, work collaboration), and pulls them in from anywhere in your bookmarks. No network calls, no account data leaves your Mac. Because this folder is personal, the preview lets you keep any bookmark it wants to move out instead — keeping one uses up one of the 20 slots, so it can bump a newly-qualifying bookmark back out.
 - **Recent** (up to 20 links). The bookmarks you've opened most in the last 30 days, most visited first.
 - **Other Bookmarks**. Everything else, left exactly where it is. Its own direct bookmarks and folders are sorted alphabetically; nested subfolders elsewhere are never touched.
 

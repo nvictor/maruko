@@ -171,7 +171,12 @@ struct ChromeExtensionView: View {
             Spacer()
         case .awaitingConfirmation:
             if let plan = extensionStore.plan {
-                FormatPlanListView(plan: plan, filterText: filterText, lastFormattedAt: nil)
+                FormatPlanListView(
+                    plan: plan,
+                    filterText: filterText,
+                    lastFormattedAt: nil,
+                    onKeepInRoutine: extensionStore.keepInRoutine
+                )
             }
         case .waitingForExtension:
             Spacer()

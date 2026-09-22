@@ -260,6 +260,86 @@ struct BookmarkTreeFormatterTests {
         #expect(otherRoot.children.map { $0.raw["id"] as? String } == ["unmatched"])
     }
 
+    // MARK: - curateTree: Routine pinning (declined evictions)
+
+    @Test func pinningAnEvictionConsumesARoutineSlotAndBumpsTheLowestRankedItem() {
+        let now = Date()
+        var children: [[String: Any]] = [
+            rawURL(id: "unmatched", name: "Random Site", url: "https://random.example.com/"),
+        ]
+        var visits: [String: RecentVisit] = [:]
+        for i in 1...20 {
+            let url = "https://item\(i).chase.com/"
+            children.append(rawURL(id: "chase\(i)", name: "Chase \(i)", url: url))
+            visits[url] = RecentVisit(lastVisitedAt: now, visitCount: i)
+        }
+        let trees = baseTrees(routineChildren: children)
+
+        let plan = BookmarkTreeFormatter.curateTree(
+            trees: trees,
+            recentVisits: visits,
+            pinnedRoutineNodeIDs: ["unmatched"]
+        )
+
+        #expect(plan.routineItems.count == 20)
+        #expect(plan.routineItems.contains { $0.nodeID == "unmatched" })
+        #expect(plan.routineItems.first { $0.nodeID == "unmatched" }?.reason == "Kept — you chose not to move this out")
+        // Pinning "unmatched" ate one of the 20 slots, so the lowest-ranked
+        // (least-visited) resident chase bookmark gets evicted instead.
+        #expect(plan.routineEvictions.map(\.nodeID) == ["chase1"])
+        #expect(plan.routineEvictions.first?.reason == "Ranked outside the top 20")
+
+        let routineFolder = BookmarkTreeFormatter.findNamedFolder("Routine", in: trees)!
+        let routineIDs = routineFolder.children.compactMap { $0.raw["id"] as? String }
+        #expect(routineIDs.contains("unmatched"))
+        #expect(!routineIDs.contains("chase1"))
+    }
+
+    @Test func pinningANodeIDNotCurrentlyInRoutineHasNoEffect() {
+        let trees = baseTrees(otherChildren: [
+            rawURL(id: "chase", name: "Chase", url: "https://chase.com/"),
+        ])
+
+        let plan = BookmarkTreeFormatter.curateTree(trees: trees, recentVisits: [:], pinnedRoutineNodeIDs: ["chase"])
+
+        #expect(plan.routineAdditions.count == 1)
+        #expect(plan.routineItems.map(\.reason) == ["Banking"])
+    }
+
+    @Test func pinningAResidentThatStillMatchesKeepsItsCategoryReason() {
+        let trees = baseTrees(routineChildren: [
+            rawURL(id: "chase", name: "Chase", url: "https://chase.com/"),
+        ])
+
+        let plan = BookmarkTreeFormatter.curateTree(trees: trees, recentVisits: [:], pinnedRoutineNodeIDs: ["chase"])
+
+        #expect(plan.routineItems.map(\.reason) == ["Banking"])
+        #expect(plan.routineEvictions.isEmpty)
+        #expect(plan.routineAdditions.isEmpty)
+    }
+
+    @Test func pinnedRoutineResidentIsExcludedFromRecentCandidacy() {
+        let now = Date()
+        let trees = baseTrees(routineChildren: [
+            rawURL(id: "ambiguous", name: "Ambiguous", url: "https://ambiguous.example.com/"),
+        ])
+        let visits = visitMap(["https://ambiguous.example.com/": now])
+
+        let plan = BookmarkTreeFormatter.curateTree(
+            trees: trees,
+            recentVisits: visits,
+            pinnedRoutineNodeIDs: ["ambiguous"]
+        )
+
+        // Without the pin, this unmatched-but-visited bookmark would have
+        // been pulled into Recent instead. Pinning keeps it in Routine.
+        #expect(plan.recentAdditions.isEmpty)
+        #expect(plan.recentItems.isEmpty)
+        #expect(plan.routineItems.map(\.nodeID) == ["ambiguous"])
+        #expect(plan.routineItems.first?.reason == "Kept — you chose not to move this out")
+        #expect(plan.routineEvictions.isEmpty)
+    }
+
     // MARK: - curateTree: Recent
 
     @Test func curateTreeCapsRecentAtTwentyByVisitCountThenRecency() throws {
