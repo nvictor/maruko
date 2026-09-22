@@ -119,12 +119,13 @@ nonisolated enum RequiredFolder: String, CaseIterable, Sendable {
 }
 
 /// Curates Maruko's managed folders. Remove duplicate URLs, then classify
-/// every remaining bookmark in the tree into "Recent" (most accessed in the
-/// last 30 days), capping it at 20 and evicting whatever doesn't make the
-/// cut back to "Other Bookmarks". Everything else is left exactly where it
-/// is; "Other Bookmarks" own direct children are sorted alphabetically as
-/// its one folder-specific rule. The trees are mutated in place with the
-/// result.
+/// bookmarks reachable from "Other Bookmarks" into "Recent" (most accessed
+/// in the last 30 days), capping it at 20 and evicting whatever doesn't make
+/// the cut back to "Other Bookmarks". Nothing outside "Other Bookmarks" (the
+/// bookmark bar, any other folder) is ever considered for "Recent" or
+/// moved. Everything else is left exactly where it is; "Other Bookmarks"
+/// own direct children are sorted alphabetically as its one folder-specific
+/// rule. The trees are mutated in place with the result.
 nonisolated enum BookmarkTreeFormatter {
     /// The first folder matching `name` exactly (trimmed, case-insensitive),
     /// found via depth-first search across the given roots in a fixed order
@@ -256,14 +257,21 @@ nonisolated enum BookmarkTreeFormatter {
             )
         }
         let otherRoot = trees.first(where: { $0.rootKey == "other" })?.node
-        let barRoot = trees.first(where: { $0.rootKey == "bookmark_bar" })?.node
 
-        // Collect every remaining URL bookmark, tree-wide, with its current
-        // parent. "Recent"'s own subfolders are left completely untouched:
-        // walk its direct URL children (candidates for keep/evict) but
-        // never recurse into a subfolder living inside it.
+        // Collect every remaining URL bookmark reachable from "Other
+        // Bookmarks", with its current parent: these are the only
+        // candidates "Recent" pulls from. Also walk "Recent" itself (which
+        // usually lives elsewhere, e.g. on the bar) so its own current
+        // residents are considered for keep/evict — but nowhere else. A
+        // bookmark on the bar, or in any other folder, is never moved.
+        // "Recent"'s own subfolders are left completely untouched: walk its
+        // direct URL children but never recurse into a subfolder living
+        // inside it. `visitedFolders` guards against collecting "Recent"
+        // twice when it happens to live inside "Other Bookmarks".
         var candidates: [Candidate] = []
+        var visitedFolders = Set<ObjectIdentifier>()
         func collect(_ folder: BookmarkNode) {
+            guard visitedFolders.insert(ObjectIdentifier(folder)).inserted else { return }
             let isManaged = folder === recentFolder
             for child in folder.children {
                 switch child.kind {
@@ -281,13 +289,10 @@ nonisolated enum BookmarkTreeFormatter {
                 }
             }
         }
-        for root in roots { collect(root) }
+        if let otherRoot { collect(otherRoot) }
+        collect(recentFolder)
 
-        // Bookmarks sitting loose directly on the bar (not inside a
-        // subfolder) are already at maximum visibility by being there; being
-        // frequently used is *why* they're on the bar, not a reason to also
-        // pull them into "Recent".
-        let recentCandidates = candidates.filter { $0.visit != nil && $0.parent !== barRoot }
+        let recentCandidates = candidates.filter { $0.visit != nil }
 
         let rankedRecent = recentCandidates
             .sorted { a, b in

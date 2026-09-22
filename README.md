@@ -10,7 +10,7 @@ Maruko is a macOS app that cleans up bookmarks in the browsers you already use. 
 
 Maruko manages exactly two folders, which must already exist somewhere in your Chrome bookmarks (Maruko never creates them for you):
 
-- **Recent** (up to 20 links). The bookmarks you've opened most in the last 30 days, most visited first. Bookmarks sitting loose directly on the bookmark bar (not inside a folder) are skipped — being on the bar already means they're used constantly, so pulling them into Recent too would be redundant.
+- **Recent** (up to 20 links). Pulled only from "Other Bookmarks", the bookmarks you've opened most in the last 30 days, most visited first. Nothing on the bookmark bar, or in any other folder, is ever moved.
 - **Other Bookmarks**. Everything else, left exactly where it is. Its own direct bookmarks and folders are sorted alphabetically; nested subfolders elsewhere are never touched.
 
 Maruko also **removes duplicates**: bookmarks pointing at the same page (trailing slashes, fragments, query order, host case) are collapsed into one, everywhere in the tree.

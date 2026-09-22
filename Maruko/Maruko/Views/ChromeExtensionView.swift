@@ -9,7 +9,7 @@ struct ChromeExtensionView: View {
     @ObservedObject var extensionStore: ExtensionFormatStore
 
     @State private var showingApplyConfirmation = false
-    @State private var setupExpanded = false
+    @State private var showingSetupSheet = false
     @State private var filterText = ""
 
     var body: some View {
@@ -54,20 +54,44 @@ struct ChromeExtensionView: View {
                 Text(plan.confirmationSummary)
             }
         }
+        .sheet(isPresented: $showingSetupSheet) {
+            setupSheet
+        }
         .task {
             extensionStore.start()
             extensionStore.refreshInstallState()
-            setupExpanded = !extensionStore.extensionConnected
+            showingSetupSheet = !extensionStore.extensionConnected
         }
         .onChange(of: extensionStore.extensionConnected) { _, connected in
-            if connected { setupExpanded = false }
+            if connected { showingSetupSheet = false }
         }
     }
 
     // MARK: - Setup / pairing
 
+    /// A single-line status row, constant height whether or not the
+    /// extension is connected. The full instructions live in a sheet
+    /// (`setupSheet`) so opening them never resizes the main window.
     private var setupSection: some View {
-        DisclosureGroup(isExpanded: $setupExpanded) {
+        HStack(spacing: 8) {
+            Image(systemName: extensionStore.extensionConnected ? "checkmark.circle.fill" : "puzzlepiece.extension")
+                .foregroundStyle(extensionStore.extensionConnected ? .green : .secondary)
+            Text(extensionStore.extensionConnected ? "Extension connected" : "Chrome extension not set up")
+            Spacer()
+            serverStatus
+            Button(extensionStore.extensionConnected ? "Setup Instructions…" : "Set Up…") {
+                showingSetupSheet = true
+            }
+            .controlSize(.small)
+        }
+        .padding(10)
+    }
+
+    private var setupSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Set Up the Chrome Extension")
+                .font(.headline)
+
             VStack(alignment: .leading, spacing: 10) {
                 setupStep(1, "Click Install Extension to put the extension where Chrome can load it. Finder opens with the folder selected.") {
                     Button("Install Extension…") {
@@ -96,17 +120,18 @@ struct ChromeExtensionView: View {
                     }
                 }
             }
-            .padding(.vertical, 6)
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: extensionStore.extensionConnected ? "checkmark.circle.fill" : "puzzlepiece.extension")
-                    .foregroundStyle(extensionStore.extensionConnected ? .green : .secondary)
-                Text(extensionStore.extensionConnected ? "Extension connected" : "Set up the Chrome extension")
+
+            HStack {
                 Spacer()
-                serverStatus
+                Button("Done") {
+                    showingSetupSheet = false
+                }
+                .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(10)
+        .padding(20)
+        .frame(width: 480)
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder

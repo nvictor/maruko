@@ -184,35 +184,42 @@ struct BookmarkTreeFormatterTests {
         #expect(otherRoot.children.map(\.title) == ["Item 1", "Item 2"])
     }
 
-    @Test func curateTreePullsRecentlyVisitedBookmarksFromAnywhereExceptLooseOnTheBar() {
+    @Test func curateTreeOnlyPullsRecentCandidatesFromOtherBookmarks() {
         let now = Date()
-        let nested = rawFolder(id: "nested", name: "Nested", children: [
-            rawURL(id: "innested", name: "In Nested", url: "https://innested.example.com/"),
+        let nestedOnBar = rawFolder(id: "nested-bar", name: "Nested", children: [
+            rawURL(id: "innested-bar", name: "In Nested On Bar", url: "https://innestedbar.example.com/"),
+        ])
+        let nestedInOther = rawFolder(id: "nested-other", name: "Nested", children: [
+            rawURL(id: "innested-other", name: "In Nested In Other", url: "https://innestedother.example.com/"),
         ])
         let trees = baseTrees(
             barChildren: [
                 rawURL(id: "onbar", name: "On The Bar", url: "https://onbar.example.com/"),
-                nested,
+                nestedOnBar,
             ],
-            otherChildren: [rawURL(id: "other1", name: "In Other", url: "https://other1.example.com/")]
+            otherChildren: [
+                rawURL(id: "inother", name: "In Other", url: "https://inother.example.com/"),
+                nestedInOther,
+            ]
         )
         let visits = visitMap([
             "https://onbar.example.com/": now,
-            "https://innested.example.com/": now.addingTimeInterval(-1800),
-            "https://other1.example.com/": now.addingTimeInterval(-3600),
+            "https://innestedbar.example.com/": now,
+            "https://inother.example.com/": now.addingTimeInterval(-60),
+            "https://innestedother.example.com/": now.addingTimeInterval(-120),
         ])
 
         let plan = BookmarkTreeFormatter.curateTree(trees: trees, recentVisits: visits)
 
-        // "On The Bar" sits loose directly on the bar (not inside a
-        // subfolder), so it's already at maximum visibility and is excluded
-        // from "Recent" candidacy. The other two, though visited less
-        // recently, still qualify.
+        // Only the two bookmarks reachable from "Other Bookmarks" qualify,
+        // even though the bar's are visited more recently. Nothing on the
+        // bar, loose or nested, is ever moved.
         #expect(plan.recentAdditions.count == 2)
-        #expect(plan.recentItems.map(\.nodeID) == ["innested", "other1"])
+        #expect(Set(plan.recentItems.compactMap(\.nodeID)) == ["inother", "innested-other"])
 
         let bar = trees.first { $0.rootKey == "bookmark_bar" }!.node
         #expect(bar.children.contains { $0.raw["id"] as? String == "onbar" })
+        #expect(bar.children.contains { $0.raw["id"] as? String == "nested-bar" })
     }
 
     // MARK: - Subfolders inside Recent are untouched
@@ -278,13 +285,13 @@ struct BookmarkTreeFormatterTests {
 
     @Test func curateTreeDedupsBeforeSelectingRecent() {
         let now = Date()
-        let nested = rawFolder(id: "nested", name: "Nested", children: [
-            rawURL(id: "bar-item", name: "Item", url: "https://item.example.com/"),
+        let dupFolder = rawFolder(id: "dup-folder", name: "Dup Folder", children: [
+            rawURL(id: "dupe-item", name: "Item Dupe", url: "https://item.example.com/"),
         ])
-        let trees = baseTrees(
-            barChildren: [nested],
-            otherChildren: [rawURL(id: "other-item", name: "Item Dupe", url: "https://item.example.com/")]
-        )
+        let trees = baseTrees(otherChildren: [
+            rawURL(id: "keep-item", name: "Item", url: "https://item.example.com/"),
+            dupFolder,
+        ])
         let visits = visitMap(["https://item.example.com/": now])
 
         let plan = BookmarkTreeFormatter.curateTree(trees: trees, recentVisits: visits)
@@ -292,6 +299,7 @@ struct BookmarkTreeFormatterTests {
         #expect(plan.duplicates.count == 1)
         #expect(plan.recentItems.count == 1)
         #expect(plan.recentAdditions.count == 1)
+        #expect(plan.recentItems.first?.nodeID == "keep-item")
     }
 
     @Test func curateTreeIsIdempotent() {
